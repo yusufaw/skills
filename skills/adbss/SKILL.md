@@ -1,6 +1,6 @@
 ---
-name: abdss
-description: Take a screenshot of the connected Android device via adb, save it to the desktop, and load the latest screenshot into the chat. Use when the user types "abdss" or asks to screenshot their Android device.
+name: adbss
+description: Take a screenshot of the connected Android device via adb, save it to the desktop, and load the latest screenshot into the chat. Use when the user types "adbss" or asks to screenshot their Android device.
 disable-model-invocation: true
 allowed-tools: Bash(adb *) Bash(mkdir *) Bash(ls *)
 ---
