@@ -83,9 +83,9 @@ Examples:
 
 Ask the user to confirm/edit the title if it is ambiguous or if multiple unrelated commits are on the branch.
 
-## Step 3 — Build the MR description (required: Summary, Changes, Testing, Ticket)
+## Step 3 — Build the MR description (required: Summary, Changes, Testing, Screenshots, Ticket)
 
-The description MUST contain exactly these four sections in order, all concise and short. The Trello metadata lives **under `#### Ticket`** as value-as-headings (no label headings).
+The description MUST contain these sections in order, all concise and short. The Trello metadata lives **under `#### Ticket`** as value-as-headings (no label headings). `#### Screenshots` is always included but filled manually by you.
 
 Required template:
 
@@ -103,6 +103,10 @@ Required template:
 
 - <concise bullet — how verified>
 - <manual/QA note if any>
+
+#### Screenshots
+
+<!-- Manually add images/videos here — leave empty if none yet -->
 
 #### Ticket
 
@@ -127,6 +131,10 @@ Scales Site Diary calendar for iPad, fixes month view layout.
 - Verified on iPad simulator (portrait + landscape)
 - Checked month scroll, no regression on iPhone
 
+#### Screenshots
+
+<!-- Add screenshots manually -->
+
 #### Ticket
 
 ##### Site Diary Calendar View Scaling for iPad
@@ -134,11 +142,12 @@ Scales Site Diary calendar for iPad, fixes month view layout.
 ```
 
 Rules:
-- Always include all four headings: `#### Summary`, `#### Changes`, `#### Testing`, `#### Ticket` — in that order. Do not omit or rename them.
+- Always include headings in order: `#### Summary`, `#### Changes`, `#### Testing`, `#### Screenshots`, `#### Ticket`. First four are required content; `#### Screenshots` is always present but you fill it manually — leave placeholder if empty. `#### Ticket` is required and must be last.
 - Keep everything **concise and short** — brevity is required, not optional:
   - `Summary`: 1-2 sentences max, under 30 words. No filler, no background the reviewer already knows.
   - `Changes`: 2-4 bullets max, one line each, under 10 words per bullet. Describe the behavior/area, not file paths.
   - `Testing`: 1-3 bullets max, one line each. State device, command, or QA check.
+  - `Screenshots`: manually filled — add images/videos or leave `<!-- Add screenshots manually -->`. Do not auto-generate screenshots; the skill creates the heading with placeholder for you to fill in GitLab. Keep it empty if nothing to show.
   - `Ticket`: exactly two lines, each `#####` (five hashes) + space + value. No extra text.
 - Ticket subsection rules:
   - Heading is `#### Ticket` (four hashes).
@@ -146,12 +155,13 @@ Rules:
   - Line 2 under it: `##### ` + exact Trello URL (raw `https://trello.com/c/...`). Do not wrap in `<>` or `[]()`.
   - Do not put Trello data anywhere else in the description. Do not duplicate.
 - Do not add label headings like `#### Trello Title` / `#### Trello URL` outside Ticket. Do not invent Trello data.
-- Total description should be short enough to read in one glance — aim for under 100 words excluding Ticket URLs.
+- Total description should be short enough to read in one glance — aim for under 100 words excluding Ticket URLs and Screenshots.
 - Save the full description to a temp file (e.g. `/tmp/mr-desc.md`) for the `glab` call — this avoids shell quoting issues with markdown.
 - Self-check before `glab mr create`:
   - `grep -c "^#### Summary" /tmp/mr-desc.md` == 1
   - `grep -c "^#### Changes" /tmp/mr-desc.md` == 1
   - `grep -c "^#### Testing" /tmp/mr-desc.md` == 1
+  - `grep -c "^#### Screenshots" /tmp/mr-desc.md` == 1
   - `grep -c "^#### Ticket" /tmp/mr-desc.md` == 1
   - Under Ticket, `grep "^##### " /tmp/mr-desc.md` shows title then URL. If it still shows `#### Trello Title` on its own line, rewrite to the new format.
 
@@ -214,7 +224,7 @@ Rules:
 ## Step 5 — Report back
 
 - Print the MR title, target branch, and MR URL.
-- Confirm the description contains all four sections `#### Summary` / `#### Changes` / `#### Testing` / `#### Ticket` in order, concise and short, and that under `#### Ticket` it has `##### <Trello Title>` and `##### <Trello URL>` (five-hash heading-value format sourced from Notion).
+- Confirm the description contains `#### Summary` / `#### Changes` / `#### Testing` / `#### Screenshots` / `#### Ticket` in order, concise and short, and that under `#### Ticket` it has `##### <Trello Title>` and `##### <Trello URL>` (five-hash heading-value format sourced from Notion). Note that `#### Screenshots` is manually filled — confirm placeholder is present if empty.
 - Confirm the MR is `Draft`, `Assignee: @me` (your account), and `Delete source branch when MR is accepted: enabled`. If any flag failed, explain why.
 - Tell the user how to mark ready when done: `glab mr update <id> --ready`.
 - Do not push to a different remote or force-push. Do not amend commits.
@@ -245,6 +255,10 @@ cat > /tmp/mr-desc.md <<'EOF'
 #### Testing
 
 - <how verified>
+
+#### Screenshots
+
+<!-- Add screenshots manually -->
 
 #### Ticket
 
