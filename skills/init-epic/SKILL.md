@@ -96,11 +96,17 @@ Create these blocks in order via Notion MCP:
      ```
 
 3. **Heading 2: `Branch`**
-   - Followed by a **code block** containing the branch name created in Step 3:
-     ```
-     fix/meeting-custom-fields-state-leak
-     ```
-     or e.g. `feat/site-diary-ipad-scaling`
+   - Followed by **two separate code blocks** (so each is easy to copy):
+     1. Code block with the branch name created in Step 3:
+        ```
+        fix/meeting-custom-fields-state-leak
+        ```
+        or e.g. `feat/site-diary-ipad-scaling`
+     2. Code block with the checkout command in a separate block:
+        ```
+        git checkout "fix/meeting-custom-fields-state-leak"
+        ```
+        Also copyable — use `git checkout "<branch>"` (or `git switch "<branch>"` on newer Git). Keep the branch name quoted so slashes are safe to copy. This second block is required so the user can one-click copy the checkout command.
 
 4. **Heading 2: `Merge Requests`** (plural)
    - Followed by a **bulleted list** of MRs — each item contains the MR title and URL on one line. This is a list because you will add follow-up fix MRs after QA testing.
@@ -148,6 +154,8 @@ Heading 2: Resume
 Heading 2: Branch
   Code block:
     fix/meeting-custom-fields-state-leak
+  Code block:
+    git checkout "fix/meeting-custom-fields-state-leak"
 
 Heading 2: Merge Requests
   Bulleted list:
@@ -164,18 +172,18 @@ Heading 3: Plan
 
 ### MCP write calls
 
-- Use `mcp__notion__append_block_children` (preferred) — append blocks in the order above so you do not overwrite the spec. Create blocks with types: `heading_2` for each title, `code` for the three code blocks (with `rich_text: [{text: {content: "..."}}]` and `language: "plain text"`), `bulleted_list_item` for each Merge Requests entry (including the initial `TBD — will fill after glab mr create` placeholder), and `bulleted_list_item` for the plan.
+- Use `mcp__notion__append_block_children` (preferred) — append blocks in the order above so you do not overwrite the spec. Create blocks with types: `heading_2` for each title, `code` for the four code blocks (Claude Code, Resume, Branch name, Branch checkout `git checkout "<branch>"`) with `rich_text: [{text: {content: "..."}}]` and `language: "plain text"`, `bulleted_list_item` for each Merge Requests entry (including the initial `TBD — will fill after glab mr create` placeholder), and `bulleted_list_item` for the plan.
 - Do NOT use `paragraph` with `annotations: {code: true}` (red inline code) — that produces the Before format. Use `type: "code"` blocks for the gray background and `bulleted_list_item` for the MR list.
 - If the MCP only supports page property updates, write the same content into a `Dev Session` / `Implementation` property as rich text; mention in chat where you wrote it.
-- After writing, fetch the page again via `get_page` / `get_block_children` to confirm the four headings appear — `Claude Code`/`Resume`/`Branch` with code blocks and `Merge Requests` with a bullet list — as in the After screenshot, and share the Notion page URL back to the user. If the page still shows the old inline-red format or singular `Merge Request`, delete those Blocks and re-append using `code` blocks + `Merge Requests` bulleted list. To add follow-up QA fix MRs later, append another `bulleted_list_item` under the existing `Merge Requests` heading rather than creating a new heading.
+- After writing, fetch the page again via `get_page` / `get_block_children` to confirm the four headings appear — `Claude Code`/`Resume` with one code block each, `Branch` with two code blocks (name + `git checkout "<branch>"`), and `Merge Requests` with a bullet list — as in the After screenshot, and share the Notion page URL back to the user. If the page still shows the old inline-red format or singular `Merge Request` or only one Branch code block, delete those Blocks and re-append using `code` blocks + `Merge Requests` bulleted list. To add follow-up QA fix MRs later, append another `bulleted_list_item` under the existing `Merge Requests` heading rather than creating a new heading.
 
 ## Step 5 — Report back
 
 - Show the Notion title + URL you read.
 - One-line feasibility verdict (feasible / feasible with risks / needs clarification).
 - New branch name and base.
-- Confirm what you wrote to Notion (Claude Code code block, Resume code block, Branch code block, and Merge Requests bulleted list with placeholder) and paste the Notion URL.
-- Tell the user: Merge Requests list starts as `TBD — will fill after glab mr create` — you will update the same `Merge Requests` heading with `- <title> <url>` bullets when each MR is created (initial MR via `/gitlab-mr`, plus additional fix MRs after QA). To add a follow-up MR, append a new bullet under that heading rather than creating a new section.
+- Confirm what you wrote to Notion (Claude Code code block, Resume code block, Branch code block + checkout command code block, and Merge Requests bulleted list with placeholder) and paste the Notion URL.
+- Tell the user: `Branch` now has two copyable blocks — the name and `git checkout "<branch>"` — and Merge Requests list starts as `TBD — will fill after glab mr create` — you will update the same `Merge Requests` heading with `- <title> <url>` bullets when each MR is created (initial MR via `/gitlab-mr`, plus additional fix MRs after QA). To add a follow-up MR, append a new bullet under that heading rather than creating a new section.
 - Do not push, do not create an MR yet — that is `/gitlab-mr`'s job.
 
 ## Error handling
