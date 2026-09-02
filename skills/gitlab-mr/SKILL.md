@@ -142,7 +142,7 @@ Scales Site Diary calendar for iPad, fixes month view layout.
 Rules:
 - Always include headings in order: `#### Summary`, `#### Changes`, `#### Testing`, `#### Screenshots`, `#### Tickets`. First four are required content; `#### Screenshots` is always present but you fill it manually — leave placeholder if empty. `#### Tickets` is required and must be last.
 - Keep everything **concise and short** — brevity is required, not optional:
-  - `Summary`: 1-2 sentences max, under 30 words. No filler, no background the reviewer already knows.
+  - `Summary`: 1-2 sentences max, under 30 words. No filler, no background the reviewer already knows. **If this MR is a fix for a previous merged MR (post-merge / post-QA fix), you MUST mention the previous MR in the Summary.** Add a short reference at the end of Summary, e.g. `Follow-up to !123 https://gitlab.com/group/project/-/merge_requests/123 — fixes ...` or `Fix for !123 — addresses QA feedback on ...`. Get the previous MR ID/URL from `glab mr list --merged`, `git log --grep`, or ask the user for the old MR link if not discoverable. Keep it on the same line or a second short sentence.
   - `Changes`: 2-4 bullets max, one line each, under 10 words per bullet. Describe the behavior/area, not file paths.
   - `Testing`: 1-3 bullets max, one line each. State device, command, or QA check.
   - `Screenshots`: manually filled — add images/videos or leave `<!-- Add screenshots manually -->`. Do not auto-generate screenshots; the skill creates the heading with placeholder for you to fill in GitLab. Keep it empty if nothing to show.
@@ -218,11 +218,42 @@ Rules:
 
 5. On success, `glab` prints the MR URL (e.g. `https://gitlab.com/group/project/-/merge_requests/123`). Capture and report it. Confirm in the report that the MR is `Draft`, `Assignee: @me`, and `Delete source branch when MR is accepted: enabled`.
 
-## Step 5 — Report back
+## Step 5 — Update Notion (if connected) — append to Merge Requests list
+
+If a Notion page is connected to this epic (e.g. from `/init-epic` which created `Claude Code`/`Resume`/`Branch`/`Merge Requests` headings), update it after the MR is successfully created. If no Notion connection is available, skip this step and note it in the report.
+
+1. **Find the Notion page:**
+   - Prefer the page ID/URL passed by the user in this session or stored from Step 1. If Step 1 used Notion MCP, reuse that same page ID.
+   - If not known, ask the user: "Is this MR linked to a Notion epic page? If so, paste the Notion link and I'll append it to the Merge Requests list." Do not guess.
+   - Verify MCP is available (`mcp__notion__get_page` etc.) — if not, warn and skip.
+
+2. **Read the current `Merge Requests` section:**
+   - Fetch the page blocks via `mcp__notion__get_block_children` / `mcp__notion__list_blocks` and locate the `Heading 2: Merge Requests` block.
+   - Check existing bullets under it (including the initial `TBD — will fill after glab mr create` placeholder).
+
+3. **Append the new MR to the existing list (do not create a new heading):**
+   - Use `mcp__notion__append_block_children` with a single `bulleted_list_item` block **under the existing `Merge Requests` heading**. If the heading does not exist, create `Heading 2: Merge Requests` first, then the bullet.
+   - **Format (exact, as requested):**
+     ```
+     - [MR Title] [MR URL]
+     ```
+     where `[MR Title]` is the MR title you used in `glab mr create --title` (brackets included) and `[MR URL]` is the full GitLab MR URL returned by `glab` (brackets included). Example:
+     ```
+     - [Scale Site Diary calendar for iPad] [https://gitlab.com/group/project/-/merge_requests/123]
+     - [Fix calendar scroll offset on iPad landscape] [https://gitlab.com/group/project/-/merge_requests/124]
+     ```
+     Keep one MR per bullet, one line each. Do NOT use markdown link syntax `[title](url)` — keep the two separate bracket groups exactly as `- [title] [url]`.
+   - If the list currently contains only the `TBD` placeholder bullet, either replace that bullet's text or keep it and append the new MR bullet below it, then remove the `TBD` placeholder on a follow-up update if needed. Prefer replacing `TBD` with the first real MR entry.
+   - For subsequent fix MRs after QA, keep appending additional bullets under the same `Merge Requests` heading — do not duplicate the heading.
+
+4. **Verify:** Re-fetch the page blocks to confirm the bullet appears under `Merge Requests` in the format `- [title] [url]`. Share the Notion page URL in the report.
+
+## Step 6 — Report back
 
 - Print the MR title, target branch, and MR URL.
-- Confirm the description contains `#### Summary` / `#### Changes` / `#### Testing` / `#### Screenshots` / `#### Tickets` in order, concise and short, and that under `#### Tickets` it has a single bullet `- <Trello Title> <Trello URL>` (title + URL on one line, sourced from Notion). Note that `#### Screenshots` is manually filled — confirm placeholder is present if empty.
+- Confirm the description contains `#### Summary` / `#### Changes` / `#### Testing` / `#### Screenshots` / `#### Tickets` in order, concise and short, and that under `#### Tickets` it has a single bullet `- <Trello Title> <Trello URL>` (title + URL on one line, sourced from Notion). Note that `#### Screenshots` is manually filled — confirm placeholder is present if empty. If this was a fix for a previous merged MR, confirm the old MR reference appears in `#### Summary`.
 - Confirm the MR is `Draft`, `Assignee: @me` (your account), and `Delete source branch when MR is accepted: enabled`. If any flag failed, explain why.
+- If a Notion page was connected, confirm you appended `- [MR Title] [MR URL]` to its `Merge Requests` list (or created the list); otherwise note that no Notion update was performed.
 - Tell the user how to mark ready when done: `glab mr update <id> --ready`.
 - Do not push to a different remote or force-push. Do not amend commits.
 
