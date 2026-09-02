@@ -102,14 +102,21 @@ Create these blocks in order via Notion MCP:
      ```
      or e.g. `feat/site-diary-ipad-scaling`
 
-4. **Heading 2: `Merge Request`**
-   - Followed by a **plain paragraph** (NOT a code block):
+4. **Heading 2: `Merge Requests`** (plural)
+   - Followed by a **bulleted list** of MRs — each item contains the MR title and URL on one line. This is a list because you will add follow-up fix MRs after QA testing.
+   - Initial state (no MR yet): single placeholder bullet:
      ```
-     TBD — will fill after glab mr create
+     - TBD — will fill after glab mr create
      ```
-   - Keep it as normal text so it can later be replaced with a link. Use an em dash `—` as shown.
+   - After `/gitlab-mr` creates the first MR, replace/add bullet(s) like:
+     ```
+     - Scale Site Diary calendar for iPad https://gitlab.com/group/project/-/merge_requests/123
+     - Fix calendar scroll offset on iPad landscape https://gitlab.com/group/project/-/merge_requests/124
+     ```
+   - Format per bullet: `- <MR title> <MR URL>` — title as created in Step 2 / `glab mr create --title`, then a single space, then full GitLab MR URL. If a fix MR is not yet created, keep its `TBD` bullet until the URL is known. Use an em dash `—` for the placeholder.
+   - Keep the list as `bulleted_list_item` blocks (not a code block, not a plain paragraph), so each MR is linkable and easy to extend.
 
-Do NOT add extra labels like `Session ID:` as separate inline-code paragraphs — the values must live inside the code blocks as shown. The gray code-block background is the visual cue (second screenshot), not red inline code (first screenshot).
+Do NOT add extra labels like `Session ID:` as separate inline-code paragraphs — the values must live inside the code blocks as shown. The gray code-block background is the visual cue (second screenshot), not red inline code (first screenshot). Do NOT use singular `Merge Request` — always `Merge Requests`.
 
 ### How to get Session ID / Name
 
@@ -142,9 +149,12 @@ Heading 2: Branch
   Code block:
     fix/meeting-custom-fields-state-leak
 
-Heading 2: Merge Request
-  Paragraph:
-    TBD — will fill after glab mr create
+Heading 2: Merge Requests
+  Bulleted list:
+    - TBD — will fill after glab mr create
+    # after MR created, becomes for example:
+    # - Scale Site Diary calendar for iPad https://gitlab.com/group/project/-/merge_requests/123
+    # - Fix calendar scroll offset on iPad landscape https://gitlab.com/group/project/-/merge_requests/124
 
 Heading 3: Plan
   - Scale Site Diary calendar grid for iPad, add landscape month scroll
@@ -154,18 +164,18 @@ Heading 3: Plan
 
 ### MCP write calls
 
-- Use `mcp__notion__append_block_children` (preferred) — append blocks in the order above so you do not overwrite the spec. Create blocks with types: `heading_2` for each title, `code` for the three code blocks (with `rich_text: [{text: {content: "..."}}]` and `language: "plain text"`), `paragraph` for the Merge Request TBD line, and `bulleted_list_item` for the plan.
-- Do NOT use `paragraph` with `annotations: {code: true}` (red inline code) — that produces the Before format. Use `type: "code"` blocks for the gray background.
-- If the MCP only supports page property updates, write the same content into a `Dev Session` / `Implementation` property as rich text with code annotations; mention in chat where you wrote it.
-- After writing, fetch the page again via `get_page` / `get_block_children` to confirm the four headings + code blocks appear as in the After screenshot, and share the Notion page URL back to the user. If the page still shows the old inline-red format, delete those Blocks and re-append using `code` blocks.
+- Use `mcp__notion__append_block_children` (preferred) — append blocks in the order above so you do not overwrite the spec. Create blocks with types: `heading_2` for each title, `code` for the three code blocks (with `rich_text: [{text: {content: "..."}}]` and `language: "plain text"`), `bulleted_list_item` for each Merge Requests entry (including the initial `TBD — will fill after glab mr create` placeholder), and `bulleted_list_item` for the plan.
+- Do NOT use `paragraph` with `annotations: {code: true}` (red inline code) — that produces the Before format. Use `type: "code"` blocks for the gray background and `bulleted_list_item` for the MR list.
+- If the MCP only supports page property updates, write the same content into a `Dev Session` / `Implementation` property as rich text; mention in chat where you wrote it.
+- After writing, fetch the page again via `get_page` / `get_block_children` to confirm the four headings appear — `Claude Code`/`Resume`/`Branch` with code blocks and `Merge Requests` with a bullet list — as in the After screenshot, and share the Notion page URL back to the user. If the page still shows the old inline-red format or singular `Merge Request`, delete those Blocks and re-append using `code` blocks + `Merge Requests` bulleted list. To add follow-up QA fix MRs later, append another `bulleted_list_item` under the existing `Merge Requests` heading rather than creating a new heading.
 
 ## Step 5 — Report back
 
 - Show the Notion title + URL you read.
 - One-line feasibility verdict (feasible / feasible with risks / needs clarification).
 - New branch name and base.
-- Confirm what you wrote to Notion (list the 4 code items + MR link placeholder) and paste the Notion URL.
-- Tell the user: MR link will be filled after they run `/gitlab-mr` — you can update the same Notion block then.
+- Confirm what you wrote to Notion (Claude Code code block, Resume code block, Branch code block, and Merge Requests bulleted list with placeholder) and paste the Notion URL.
+- Tell the user: Merge Requests list starts as `TBD — will fill after glab mr create` — you will update the same `Merge Requests` heading with `- <title> <url>` bullets when each MR is created (initial MR via `/gitlab-mr`, plus additional fix MRs after QA). To add a follow-up MR, append a new bullet under that heading rather than creating a new section.
 - Do not push, do not create an MR yet — that is `/gitlab-mr`'s job.
 
 ## Error handling
