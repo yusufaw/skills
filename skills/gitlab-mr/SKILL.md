@@ -234,26 +234,26 @@ If a Notion page is connected to this epic (e.g. from `/init-epic` which created
 3. **Append the new MR to the existing list (do not create a new heading):**
    - Use `mcp__notion__append_block_children` with a single `bulleted_list_item` block **under the existing `Merge Requests` heading**. If the heading does not exist, create `Heading 2: Merge Requests` first, then the bullet.
    - **Format (exact, as requested):**
-     ```
-     - [MR Title] [MR URL]
-     ```
-     where `[MR Title]` is the MR title you used in `glab mr create --title` (brackets included) and `[MR URL]` is the full GitLab MR URL returned by `glab` (brackets included). Example:
-     ```
-     - [Scale Site Diary calendar for iPad] [https://gitlab.com/group/project/-/merge_requests/123]
-     - [Fix calendar scroll offset on iPad landscape] [https://gitlab.com/group/project/-/merge_requests/124]
-     ```
-     Keep one MR per bullet, one line each. Do NOT use markdown link syntax `[title](url)` — keep the two separate bracket groups exactly as `- [title] [url]`.
+      ```
+      - MR Title MR URL
+      ```
+      where `MR Title` is the MR title you used in `glab mr create --title` and `MR URL` is the full GitLab MR URL returned by `glab`. Example:
+      ```
+      - Scale Site Diary calendar for iPad https://gitlab.com/group/project/-/merge_requests/123
+      - Fix calendar scroll offset on iPad landscape https://gitlab.com/group/project/-/merge_requests/124
+      ```
+      Keep one MR per bullet, one line each. Do NOT wrap title or URL in `[]` brackets. Do NOT use markdown link syntax `[title](url)` — keep plain text title, single space, raw URL.
    - If the list currently contains only the `TBD` placeholder bullet, either replace that bullet's text or keep it and append the new MR bullet below it, then remove the `TBD` placeholder on a follow-up update if needed. Prefer replacing `TBD` with the first real MR entry.
    - For subsequent fix MRs after QA, keep appending additional bullets under the same `Merge Requests` heading — do not duplicate the heading.
 
-4. **Verify:** Re-fetch the page blocks to confirm the bullet appears under `Merge Requests` in the format `- [title] [url]`. Share the Notion page URL in the report.
+ 4. **Verify:** Re-fetch the page blocks to confirm the bullet appears under `Merge Requests` in the format `- title url`. Share the Notion page URL in the report.
 
 ## Step 6 — Report back
 
 - Print the MR title, target branch, and MR URL.
 - Confirm the description contains `#### Summary` / `#### Changes` / `#### Testing` / `#### Screenshots` / `#### Tickets` in order, concise and short, and that under `#### Tickets` it has a single bullet `- <Trello Title> <Trello URL>` (title + URL on one line, sourced from Notion). Note that `#### Screenshots` is manually filled — confirm placeholder is present if empty. If this was a fix for a previous merged MR, confirm the old MR reference appears in `#### Summary`.
 - Confirm the MR is `Draft`, `Assignee: @me` (your account), and `Delete source branch when MR is accepted: enabled`. If any flag failed, explain why.
-- If a Notion page was connected, confirm you appended `- [MR Title] [MR URL]` to its `Merge Requests` list (or created the list); otherwise note that no Notion update was performed.
+- If a Notion page was connected, confirm you appended `- MR Title MR URL` to its `Merge Requests` list (or created the list); otherwise note that no Notion update was performed.
 - Tell the user how to mark ready when done: `glab mr update <id> --ready`.
 - Do not push to a different remote or force-push. Do not amend commits.
 
