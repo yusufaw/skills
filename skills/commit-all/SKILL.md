@@ -33,11 +33,13 @@ allowed-tools: Bash(git diff *) Bash(git status *) Bash(git log *) Bash(git add 
      - types: feat, fix, refactor, chore, docs, test, style, perf
      - scope is optional, use only when it adds clarity
    - Summary line: imperative mood, no period, under 50 characters
-   - If the diff spans multiple unrelated concerns, add a short body (bullet
-     points) after a blank line
+   - If the diff spans multiple unrelated concerns, add a short concise body
+     (bullet points) after a blank line — keep it to 2-3 short bullets max,
+     no lengthy paragraphs
    - Base the message only on what's actually changed, don't guess at
      unstated intent
    - Match the style of the recent commit messages above where sensible
+   - Never add `Co-Authored-By`, `Claude-Session`, or any other trailer/metadata
 4. Run `git add -A` to stage everything, then create the commit with the
    drafted message via a HEREDOC, e.g.:
    ```
