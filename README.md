@@ -17,6 +17,7 @@ skills/
     references/        optional: longer docs the skill points to instead of inlining
     scripts/            optional: helper scripts the skill invokes
 scripts/
+  install_skills.sh    links skills into a Codex skill directory
   validate_skills.py   checks every SKILL.md has valid frontmatter
 ```
 
@@ -40,39 +41,25 @@ scripts/
 
 ### Install for all your projects (recommended)
 
-Run these commands in your terminal from the root of this repository. They link
-each skill into `~/.agents/skills`, making it available to Codex sessions running
-under your user account across projects on this computer.
+Run this command from the root of this repository. It links each skill into
+`~/.agents/skills`, making it available to Codex sessions running under your user
+account across projects on this computer. Rerun it after adding a new skill.
 
 ```sh
-skill_source="$(pwd)/skills"
-skill_destination="$HOME/.agents/skills"
-mkdir -p "$skill_destination"
-
-for skill in "$skill_source"/*; do
-  [ -f "$skill/SKILL.md" ] || continue
-  skill_name="${skill##*/}"
-  [ "$skill_name" = "_template" ] && continue
-  target="$skill_destination/$skill_name"
-  if [ -e "$target" ] || [ -L "$target" ]; then
-    printf 'Skipping existing skill: %s\n' "$target"
-    continue
-  fi
-  ln -s "$skill" "$target"
-done
+./scripts/install_skills.sh
 ```
 
-The command skips `_template` and preserves existing destinations. Symlinks keep
+The script skips `_template` and preserves existing destinations. Symlinks keep
 edits to installed skills in sync with this checkout. Keep the repository at the
-same location; moving or deleting it breaks the links. Run the loop again after
-adding new skill folders.
+same location; moving or deleting it breaks the links. Pass a project-specific
+destination as the first argument when needed.
 
 ### Install for one project only
 
-Use the same commands above, but replace the `skill_destination` line with:
+Pass the project’s skills directory as the first argument:
 
 ```sh
-skill_destination="/absolute/path/to/your/project/.agents/skills"
+./scripts/install_skills.sh "/absolute/path/to/your/project/.agents/skills"
 ```
 
 Replace the example path with the project where you want to use the skills.
