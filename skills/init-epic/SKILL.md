@@ -81,18 +81,26 @@ Append a section to the page (at the top or bottom, without overwriting the orig
 
 Create these blocks in order via Notion MCP:
 
-1. **Heading 2: `Claude Code`**
-   - Followed by a **code block** (`type: code`, language `plain text`) containing two lines, Session Name first, Session ID second:
+1. **Heading 2: `Claude Code` or `Codex`**
+   - Use `Claude Code` when the current agent is Claude Code and `Codex` when the current agent is Codex. The heading must match the active agent.
+   - Followed by a **code block** (`type: code`, language `plain text`) containing the real session name and session ID, with Session Name first and Session ID second:
      ```
      Session Name: epic/meeting-custom-fields-state-leak
      Session ID: bbfb0970-c6ca-48cd-93f1-aabce87d1016
      ```
-   - Use the real Session Name and Session ID for this chat (see "How to get Session ID / Name" below). Never invent a UUID.
+   - Use the real session name and session ID for the active agent (Claude Code or Codex); never invent a UUID. For Codex, add a third line to the same code block:
+     ```
+     Codex Resume: codex resume "bbfb0970-c6ca-48cd-93f1-aabce87d1016"
+     ```
 
 2. **Heading 2: `Resume`**
    - Followed by a **code block** containing the resume command:
      ```
      claude --resume bbfb0970-c6ca-48cd-93f1-aabce87d1016
+     ```
+   - When the current agent is Codex, use the Codex command instead:
+     ```
+     codex resume "bbfb0970-c6ca-48cd-93f1-aabce87d1016"
      ```
 
 3. **Heading 2: `Branch`**
@@ -127,8 +135,10 @@ Do NOT add extra labels like `Session ID:` as separate inline-code paragraphs �
 ### How to get Session ID / Name
 
 - If the environment exposes `CLAUDE_SESSION_ID` / `CLAUDE_SESSION_NAME` or a `session` MCP resource, read it via `Bash(echo $CLAUDE_SESSION_ID)` or the session tool and use the real values.
-- If not exposed, check the chat UI header or ask Claude to confirm: run `Bash` to list recent session files (`ls ~/.config/claude/sessions 2>/dev/null | head`) only if permitted; otherwise state: `Session ID: <copy from this chat's session ID>` and ask the user to confirm. Never invent a UUID — use the real one or mark as `TBD - copy from chat header`.
-- Session Name is typically the auto-generated title of this conversation; if unavailable, derive from the branch name or Notion title (e.g. `epic/meeting-custom-fields-state-leak`) and note it is provisional. In the code block, keep the order `Session Name:` line first, `Session ID:` second, exactly as in the After screenshot.
+- If the current agent is Codex, obtain the active Codex session name and ID from the Codex runtime/session metadata when available. Use `CODEX_SESSION_ID` / `CODEX_SESSION_NAME` if exposed, or the current Codex session context. The supported resume syntax is `codex resume "<session-id-or-name>"`; the argument may be either the UUID or session name.
+- For Codex sessions, write the session name and ID into the `Codex` code block and include `Codex Resume: codex resume "<session-id-or-name>"` there, then repeat that command in the `Resume` code block.
+- If the session metadata is not exposed, check the chat UI header or ask the current agent to confirm. Use the appropriate session files only if permitted (`~/.config/claude/sessions` for Claude Code; the Codex session store or `codex agents` for Codex). Otherwise state `Session ID: <copy from this chat's session ID>` and ask the user to confirm. Never invent a UUID — use the real one or mark it as `TBD - copy from chat header`.
+- Session Name is typically the auto-generated title of this conversation; if unavailable, derive it from the branch name or Notion title (e.g. `epic/meeting-custom-fields-state-leak`) and note it is provisional. In the code block, keep the order `Session Name:` line first, `Session ID:` second; for Codex, keep the `Codex Resume:` line third.
 
 ### Concise impl plan (same write, optional but keep short)
 
@@ -142,7 +152,7 @@ If you also write the impl plan, place it **after** the four headings above as a
 Example Notion append structure (After format):
 
 ```
-Heading 2: Claude Code
+Heading 2: Claude Code (or Codex when using Codex)
   Code block:
     Session Name: epic/meeting-custom-fields-state-leak
     Session ID: bbfb0970-c6ca-48cd-93f1-aabce87d1016
@@ -172,17 +182,17 @@ Heading 3: Plan
 
 ### MCP write calls
 
-- Use `mcp__notion__append_block_children` (preferred) — append blocks in the order above so you do not overwrite the spec. Create blocks with types: `heading_2` for each title, `code` for the four code blocks (Claude Code, Resume, Branch name, Branch checkout `git checkout "<branch>"`) with `rich_text: [{text: {content: "..."}}]` and `language: "plain text"`, `bulleted_list_item` for each Merge Requests entry (including the initial `TBD — will fill after glab mr create` placeholder), and `bulleted_list_item` for the plan.
+- Use `mcp__notion__append_block_children` (preferred) — append blocks in the order above so you do not overwrite the spec. Create blocks with types: `heading_2` for each title, `code` for the four code blocks (Claude Code or Codex, Resume, Branch name, Branch checkout `git checkout "<branch>"`) with `rich_text: [{text: {content: "..."}}]` and `language: "plain text"`, `bulleted_list_item` for each Merge Requests entry (including the initial `TBD — will fill after glab mr create` placeholder), and `bulleted_list_item` for the plan.
 - Do NOT use `paragraph` with `annotations: {code: true}` (red inline code) — that produces the Before format. Use `type: "code"` blocks for the gray background and `bulleted_list_item` for the MR list.
 - If the MCP only supports page property updates, write the same content into a `Dev Session` / `Implementation` property as rich text; mention in chat where you wrote it.
-- After writing, fetch the page again via `get_page` / `get_block_children` to confirm the four headings appear — `Claude Code`/`Resume` with one code block each, `Branch` with two code blocks (name + `git checkout "<branch>"`), and `Merge Requests` with a bullet list — as in the After screenshot, and share the Notion page URL back to the user. If the page still shows the old inline-red format or singular `Merge Request` or only one Branch code block, delete those Blocks and re-append using `code` blocks + `Merge Requests` bulleted list. To add follow-up QA fix MRs later, append another `bulleted_list_item` under the existing `Merge Requests` heading rather than creating a new heading.
+- After writing, fetch the page again via `get_page` / `get_block_children` to confirm the four headings appear — the active-agent heading (`Claude Code` or `Codex`) and `Resume` with one code block each, `Branch` with two code blocks (name + `git checkout "<branch>"`), and `Merge Requests` with a bullet list — as in the After screenshot, and share the Notion page URL back to the user. If the page still shows the old inline-red format or singular `Merge Request` or only one Branch code block, delete those Blocks and re-append using `code` blocks + `Merge Requests` bulleted list. To add follow-up QA fix MRs later, append another `bulleted_list_item` under the existing `Merge Requests` heading rather than creating a new heading.
 
 ## Step 5 — Report back
 
 - Show the Notion title + URL you read.
 - One-line feasibility verdict (feasible / feasible with risks / needs clarification).
 - New branch name and base.
-- Confirm what you wrote to Notion (Claude Code code block, Resume code block, Branch code block + checkout command code block, and Merge Requests bulleted list with placeholder) and paste the Notion URL.
+- Confirm what you wrote to Notion (active-agent code block — `Claude Code` or `Codex` —, Resume code block, Branch code block + checkout command code block, and Merge Requests bulleted list with placeholder) and paste the Notion URL.
 - Tell the user: `Branch` now has two copyable blocks — the name and `git checkout "<branch>"` — and Merge Requests list starts as `TBD — will fill after glab mr create` — you will update the same `Merge Requests` heading with `- <title> <url>` bullets when each MR is created (initial MR via `/gitlab-mr`, plus additional fix MRs after QA). To add a follow-up MR, append a new bullet under that heading rather than creating a new section.
 - Do not push, do not create an MR yet — that is `/gitlab-mr`'s job.
 
