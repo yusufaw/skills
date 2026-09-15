@@ -2,7 +2,7 @@
 name: screenshot
 description: Capture a screenshot from a connected Android or physical iOS device, save it to the Desktop, and load it into the conversation. Use when the user asks for a device screenshot or types "screenshot".
 disable-model-invocation: true
-allowed-tools: Bash(adb *) Bash(idevice_id *) Bash(idevicescreenshot *) Bash(xcrun *) Bash(mkdir *) Bash(ls *)
+allowed-tools: Bash(adb *) Bash(idevice_id *) Bash(idevicescreenshot *) Bash(xcrun *) Bash(mkdir *) Bash(ls *) Bash(sleep *)
 ---
 
 ## Find the connected devices
@@ -38,6 +38,11 @@ user to clarify. If the request does not name a target and there is exactly one
 usable device, capture it immediately. Only ask the user to choose from a
 numbered list when the request has no target and multiple usable devices exist.
 
+Determine the requested capture count from the wording: “twice” means 2,
+“three times” means 3, and an explicit number means that number. If no count is
+given, capture once. Use a 5-second gap between captures in a multi-capture
+request. Do not wait after the final capture.
+
 ## Capture the selected device
 
 For Android, create a timestamped file in the shared screenshot directory and
@@ -62,15 +67,17 @@ mkdir -p ~/Desktop/screenshots && xcrun simctl io <SIMULATOR_UDID> screenshot ~/
 
 ## Load the result
 
-After a successful capture, find the newest file in the shared screenshot
-folder:
+After a successful capture, find the files created by this request in the shared
+screenshot folder:
 
 ```sh
-ls -t ~/Desktop/screenshots/*.png 2>/dev/null | head -1
+ls -t ~/Desktop/screenshots/*.png 2>/dev/null
 ```
 
-Use the Read tool to open the exact path printed for the capture so the image
-loads into the conversation, matching the `adbss` skill's result behavior.
+Use the Read tool to open each exact path created by this request, in capture
+order, so every image loads into the conversation. For multiple captures, run
+the selected platform's capture command once per image and run `sleep 5` between
+commands.
 
 If capture fails, report the command error and the relevant setup: Android needs
 USB debugging enabled and authorized; physical iOS devices need pairing and the
