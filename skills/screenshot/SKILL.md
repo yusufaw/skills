@@ -5,6 +5,23 @@ disable-model-invocation: true
 allowed-tools: Bash(adb *) Bash(idevice_id *) Bash(idevicescreenshot *) Bash(xcrun *) Bash(mkdir *) Bash(ls *) Bash(sleep *)
 ---
 
+## Execution priority — screenshot first
+
+This skill has highest priority in the current user message. When the user
+message contains `screenshot` alongside other instructions, you MUST handle the
+screenshot workflow first before processing any other instruction in that
+message.
+
+Order:
+1. Detect devices and confirm selection (if needed) — do not capture yet.
+2. Capture and load the screenshot(s) into the conversation.
+3. Only then, process the remaining instructions in the same user message
+   using the captured screenshot(s) as context.
+
+Do not process, analyze, or act on any other instruction until the
+screenshot(s) have been successfully captured and loaded (or a failure has been
+reported and handled).
+
 ## Find the connected devices
 
 Check both device families before capturing:
@@ -26,22 +43,28 @@ booted simulator rows from `xcrun simctl list devices booted` as available iOS
 simulators. Ignore Android rows in `offline` or `unauthorized` state and report
 those states if there are no usable devices.
 
-Use the user's wording to select a device automatically when it names a platform,
-model, device name, or device ID. For example, “screenshot Android”, “screenshot
-Nokia”, and “screenshot iPad” should target the matching connected device without
-asking the user to choose. Match platform and device names case-insensitively;
-prefer an exact device ID or model match when available.
-
-If the requested target is not detected, report that target as unavailable and
-show the detected devices. If the request matches more than one device, ask the
-user to clarify. If the request does not name a target and there is exactly one
-usable device, capture it immediately. Only ask the user to choose from a
-numbered list when the request has no target and multiple usable devices exist.
-
 Determine the requested capture count from the wording: “twice” means 2,
 “three times” means 3, and an explicit number means that number. If no count is
 given, capture once. Use a 5-second gap between captures in a multi-capture
 request. Do not wait after the final capture.
+
+### Device selection — always confirm when multiple devices
+
+- If exactly one usable device is detected, capture it immediately without
+  asking.
+- If multiple usable devices are detected, ALWAYS ask the user to confirm
+  before capturing. Present a numbered list of all detected devices (with
+  platform, model/name, and ID/serial) and wait for the user's selection.
+  Do not auto-capture even if the user's wording names a platform/model —
+  still confirm. Only after the user confirms, capture from the selected
+  device.
+- If the user named a specific target (e.g. “screenshot Android”, “screenshot
+  Nokia”, “screenshot iPad”) and that target matches exactly one detected
+  device among many, pre-select it in the confirmation list and ask the user
+  to confirm it before capturing.
+- If the requested target is not detected, report that target as unavailable
+  and show the detected devices. If the request matches more than one device,
+  ask the user to clarify and wait for confirmation.
 
 ## Capture the selected device
 
@@ -84,3 +107,10 @@ USB debugging enabled and authorized; physical iOS devices need pairing and the
 `idevice_id`/`idevicescreenshot` tools from libimobiledevice; iOS simulators need
 Xcode and a booted simulator recognized by `simctl`. Do not claim a result or
 open an older screenshot when the new capture failed.
+
+## After capture — continue with the same message's instructions
+
+Once the screenshot(s) are loaded (or after handling a failure), continue and
+process any remaining instructions from the same user message that triggered
+this skill, using the captured screenshot(s) as context. Do not defer the
+screenshot or handle other instructions first — screenshot always comes first.
