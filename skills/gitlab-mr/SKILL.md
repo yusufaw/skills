@@ -25,6 +25,13 @@ description: Create a GitLab merge request with glab, auto-filling Trello Title 
 
 You create a GitLab Merge Request using `glab` with a meaningful title and a description that always contains Trello metadata sourced from Notion.
 
+## Command execution guidance (host approval, batching, failure handling)
+
+- When host access is required for GitLab, tmux, ADB, or Desktop screenshots, request **one escalation for the complete verification/update sequence** rather than separate approvals for each command. Bundle the intended commands in the approval request so the sequence runs without re-prompting.
+- **Batch related GitLab commands into one host-approved command whenever possible.** Combine fetch → conditional update → re-verify into a single `bash` block chained with `&&` / `;` so the workflow needs only one approval. Example: `glab mr view ... --output json && glab api ... --method PUT ... && glab mr view ... --output json`.
+- Do not request repeated approval for routine commands in the same workflow unless the command scope materially changes (different project, different auth, destructive action). Reuse the initial approval for retries and verification steps.
+- If a command fails, **inspect the error and adjust the command instead of repeating the same operation.** Parse `stderr`, check for missing flags, auth, or already-exists cases, then retry with a corrected command (e.g. fall back from `--assignee "@me"` to `--assignee me`, or from `should_remove_source_branch` to `remove_source_branch`).
+
 ## Pre-flight checks
 
 1. Verify `glab` is installed: `glab --version`. If missing, tell the user to install it (`brew install glab` or https://gitlab.com/gitlab-org/cli) and stop.
@@ -162,7 +169,7 @@ Rules:
   - `grep -c "^#### Tickets" /tmp/mr-desc.md` == 1
   - Under Tickets, `grep "^- .*https://trello.com" /tmp/mr-desc.md` shows the bullet with title + URL. If it still shows `##### ` or `#### Ticket` on its own line, rewrite to the new `#### Tickets` bullet format.
 
-## Step 4 — Create the MR with glab (always Draft + assignee + remove source branch)
+## Step 4 — Create the MR with glab (always Draft + assignee + remove source branch) — idempotent, verified
 
 1. Ensure the branch is pushed (see Pre-flight step 6).
 2. Resolve assignee: use the authenticated GitLab user by default. This maps to `--assignee @me` in `glab`. Optionally verify the username via `glab api user --jq .username` or from `glab auth status`. If `glab` cannot resolve `@me`, fall back to no assignee and warn the user rather than failing the MR create. If the user explicitly says "no assignee" or "unassign", skip this flag.
@@ -197,7 +204,7 @@ Rules:
    - `--draft` (or `-d`) is required by default per team policy — every MR from this skill is a Draft until you mark it ready with `glab mr update <id> --ready`. Only omit `--draft` if the user explicitly says "ready" / "not draft".
    - `--assignee "@me"` assigns to the authenticated `glab` user. Do not hardcode a username; `@me` always resolves to your account.
    - `glab` may also accept `--assignee me` (without `@`) on older versions — if `--assignee "@me"` fails, retry with `--assignee me`.
-   - `--remove-source-branch` checks "Delete source branch when merge request is accepted" by default (GitLab `should_remove_source_branch=true`). This is required per team policy — always include it. Only omit or set `--remove-source-branch=false` if the user explicitly says to keep the branch. On older `glab` versions the flag may require an explicit value: use `--remove-source-branch=true`.
+   - `--remove-source-branch` checks "Delete source branch when merge request is accepted" by default (GitLab `should_remove_source_branch=true`). This is required per team policy — always include it on create. Only omit or set `--remove-source-branch=false` if the user explicitly says to keep the branch. On older `glab` versions the flag may require an explicit value: use `--remove-source-branch=true`.
 
    Additional optional flags you may add when the user asks:
    - `--reviewer <user>` / `--reviewer-group <group>`
@@ -205,18 +212,64 @@ Rules:
    - `--milestone "Sprint 12"`
    - `--squash-before-merge` if the repo prefers it
 
-4. If `glab mr create` reports "a merge request already exists for this branch", run `glab mr view` or `glab mr list --source-branch <branch>` and share the existing MR URL instead of creating a duplicate. Offer to update it in place so it stays Draft + assigned + remove-branch:
+4. If `glab mr create` reports "a merge request already exists for this branch", do **not** create a duplicate. Fetch the existing MR and update it in place. **Batch the fetch + conditional update + re-verify into one host-approved command** (see Command execution guidance above).
 
    ```bash
-   glab mr update <id> --description "$(cat /tmp/mr-desc.md)" --draft --assignee "@me"
-   # ensure remove-source-branch is set (via API if glab update lacks the flag):
-   glab api "projects/:id/merge_requests/:iid" --method PUT -f should_remove_source_branch=true 2>/dev/null || glab mr update <id> --remove-source-branch
-   # or file-based:
-   glab mr update <id> --description-file /tmp/mr-desc.md
-   glab mr update <id> --draft  # if needed
+   # Fetch existing MR JSON first — do not touch settings blindly
+   glab mr view <iid> --output json > /tmp/mr.json 2>&1 || glab api "projects/:id/merge_requests/:iid" --jq . > /tmp/mr.json
+   cat /tmp/mr.json | jq '{iid, draft: (.draft // .work_in_progress), assignee: .assignee.username, should_remove_source_branch, force_remove_source_branch, remove_source_branch, description}'
+   # Update description + draft/assignee in one call (API preferred for remove_source_branch — see step 5)
+   glab mr update <iid> --description-file /tmp/mr-desc.md --draft --assignee "@me" --yes
    ```
 
-5. On success, `glab` prints the MR URL (e.g. `https://gitlab.com/group/project/-/merge_requests/123`). Capture and report it. Confirm in the report that the MR is `Draft`, `Assignee: @me`, and `Delete source branch when MR is accepted: enabled`.
+5. **Post-create / post-update verification — fetch JSON state before changing settings (required, idempotent):**
+
+   After every `glab mr create` or `glab mr update`, **fetch the current MR JSON state before deciding to change settings**. Do not assume flags took effect.
+
+   ```bash
+   # Fetch current state (prefer one call, reuse project IID from previous step)
+   glab mr view <iid> --output json > /tmp/mr.json 2>&1 || glab api "projects/$(glab api project --jq .id)/merge_requests/<iid>" > /tmp/mr.json
+   cat /tmp/mr.json | jq '{draft: (.draft // .work_in_progress // .draft), assignee: (.assignee.username // .assignee.name), should_remove_source_branch, force_remove_source_branch, remove_source_branch, description}'
+   ```
+
+   - **Treat `--remove-source-branch` in `glab` as a toggle, not an idempotent setter.** Never invoke `glab mr update --remove-source-branch` unless the fetched JSON confirms source-branch removal is **disabled**. If `should_remove_source_branch` is already `true` or `force_remove_source_branch` is `true`, do nothing — the setting is already enabled.
+   - **Never invoke the toggle twice blindly.** One conditional invocation per verification cycle at most; re-fetch JSON after any toggle before deciding again.
+   - **Prefer the GitLab API field `remove_source_branch=true` when explicitly setting the value** (explicit setter, not a toggle). Use it when the state check shows removal is disabled:
+
+     ```bash
+     # Only if verification shows removal is disabled (both flags false/null)
+     glab api "projects/:id/merge_requests/:iid" --method PUT -f remove_source_branch=true > /tmp/mr-update.json \
+       || glab api "projects/:id/merge_requests/:iid" --method PUT -f should_remove_source_branch=true > /tmp/mr-update.json
+     # Fallback only if API is unavailable — and only after confirming disabled:
+     # glab mr update <iid> --remove-source-branch
+     ```
+
+   - **Verify the final MR JSON after every update** — check all of:
+     - `draft` / `work_in_progress` (must be true for Draft)
+     - `assignee` (must match authenticated user)
+     - `remove_source_branch` / `should_remove_source_branch`
+     - `force_remove_source_branch`
+     - `description` (contains `#### Tickets` bullet with Trello URL)
+   - **If `force_remove_source_branch=true`, report source-branch deletion as enabled even when `should_remove_source_branch` is null or false.** GitLab project settings can force removal; in that case do not attempt a toggle and report: `Delete source branch when MR is accepted: enabled (forced by project settings)`.
+
+   **Batched verification/update sequence (one host approval):**
+
+   ```bash
+   iid=<iid>; pid=$(glab api project --jq .id 2>/dev/null || echo ":id"); \
+   glab mr view $iid --output json > /tmp/mr.json 2>&1 || glab api "projects/$pid/merge_requests/$iid" > /tmp/mr.json; \
+   echo "=== current ==="; cat /tmp/mr.json | jq '{draft: (.draft // .work_in_progress), assignee: .assignee.username, should_remove_source_branch, force_remove_source_branch, description: (.description[0:120])}'; \
+   should=$(jq -r '.should_remove_source_branch // .remove_source_branch // false' /tmp/mr.json); \
+   forced=$(jq -r '.force_remove_source_branch // false' /tmp/mr.json); \
+   if [ "$forced" = "true" ]; then echo "remove_source_branch forced=true — already enabled"; \
+   elif [ "$should" != "true" ]; then echo "enabling remove_source_branch via API"; glab api "projects/$pid/merge_requests/$iid" --method PUT -f remove_source_branch=true > /tmp/mr-update.json 2>&1 || glab api "projects/$pid/merge_requests/$iid" --method PUT -f should_remove_source_branch=true > /tmp/mr-update.json 2>&1; cat /tmp/mr-update.json | jq '{should_remove_source_branch, force_remove_source_branch}'; \
+   else echo "remove_source_branch already enabled — no toggle needed"; fi; \
+   glab mr view $iid --output json > /tmp/mr-final.json 2>&1 || glab api "projects/$pid/merge_requests/$iid" > /tmp/mr-final.json; \
+   echo "=== final ==="; cat /tmp/mr-final.json | jq '{draft: (.draft // .work_in_progress), assignee: .assignee.username, should_remove_source_branch, force_remove_source_branch}'
+   ```
+
+   On success, capture the MR URL (e.g. `https://gitlab.com/group/project/-/merge_requests/123`) and include the final verified JSON summary in the report. If any field does not match expectation, inspect the error output and adjust the command (do not blindly repeat the same toggle or update).
+
+6. On success, `glab` prints the MR URL (e.g. `https://gitlab.com/group/project/-/merge_requests/123`). Capture and report it. Confirm in the report that the MR is `Draft` (from verified JSON `draft`/`work_in_progress`), `Assignee: @me`, and `Delete source branch when MR is accepted: enabled` (or `enabled (forced by project settings)` when `force_remove_source_branch=true`).
 
 ## Step 5 — Update Notion (if connected) — append to Merge Requests list
 
@@ -252,7 +305,7 @@ If a Notion page is connected to this epic (e.g. from `/init-epic` which created
 
 - Print the MR title, target branch, and MR URL.
 - Confirm the description contains `#### Summary` / `#### Changes` / `#### Testing` / `#### Screenshots` / `#### Tickets` in order, concise and short, and that under `#### Tickets` it has a single bullet `- <Trello Title> <Trello URL>` (title + URL on one line, sourced from Notion). Note that `#### Screenshots` is manually filled — confirm placeholder is present if empty. If this was a fix for a previous merged MR, confirm the old MR reference appears in `#### Summary`.
-- Confirm the MR is `Draft`, `Assignee: @me` (your account), and `Delete source branch when MR is accepted: enabled`. If any flag failed, explain why.
+- Confirm the MR is `Draft` (verified from final JSON `draft`/`work_in_progress`), `Assignee: @me` (verified `assignee.username`), and `Delete source branch when MR is accepted: enabled` (verified `should_remove_source_branch` or `force_remove_source_branch=true` → report as `enabled (forced by project settings)`). Include the final JSON snippet in the report if relevant. If any flag failed, explain why and show the JSON.
 - If a Notion page was connected, confirm you appended `- MR Title MR URL` to its `Merge Requests` list (or created the list); otherwise note that no Notion update was performed.
 - Tell the user how to mark ready when done: `glab mr update <id> --ready`.
 - Do not push to a different remote or force-push. Do not amend commits.
@@ -264,6 +317,7 @@ If a Notion page is connected to this epic (e.g. from `/init-epic` which created
 - `remote not found` or `not a git repository` → verify path, stop.
 - Notion lookup fails → fall back to asking the user (Step 1, option 3), never fabricate.
 - MR create fails due to validation (e.g. title too long, branch not pushed) → show the exact `glab` stderr and suggest the fix.
+- MR update / API fails → inspect the error output, adjust the field name (`remove_source_branch` vs `should_remove_source_branch`) or auth, then retry with a corrected command; do not repeat the identical failing command.
 
 ## Quick reference — one-liner for manual use
 
@@ -293,4 +347,6 @@ cat > /tmp/mr-desc.md <<'EOF'
 - <Trello Title from Notion> https://trello.com/c/...
 EOF
 glab mr create --title "<title>" --description-file /tmp/mr-desc.md --target-branch development --draft --assignee "@me" --remove-source-branch --yes
+# then verify (one batched host approval):
+iid=<iid>; pid=$(glab api project --jq .id); glab mr view $iid --output json | jq '{draft: (.draft // .work_in_progress), assignee: .assignee.username, should_remove_source_branch, force_remove_source_branch}'; if [ "$(jq -r '.should_remove_source_branch // false' /tmp/mr.json)" != "true" ] && [ "$(jq -r '.force_remove_source_branch // false' /tmp/mr.json)" != "true" ]; then glab api "projects/$pid/merge_requests/$iid" --method PUT -f remove_source_branch=true; fi; glab mr view $iid --output json | jq '{draft, assignee, should_remove_source_branch, force_remove_source_branch, description}'
 ```
