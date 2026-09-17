@@ -160,6 +160,7 @@ Rules:
   - Do not put Trello data anywhere else in the description. Do not duplicate.
 - Do not add label headings like `#### Trello Title` / `#### Trello URL` or `#####` blocks outside Tickets. Do not invent Trello data.
 - Total description should be short enough to read in one glance — aim for under 100 words excluding Tickets URL and Screenshots.
+- Optionally capture screenshots before finalizing the file — see Step 3b below (offer screenshot, use `screenshot` skill, embed result into `#### Screenshots`).
 - Save the full description to a temp file (e.g. `/tmp/mr-desc.md`) for the `glab` call — this avoids shell quoting issues with markdown.
 - Self-check before `glab mr create`:
   - `grep -c "^#### Summary" /tmp/mr-desc.md` == 1
@@ -168,6 +169,118 @@ Rules:
   - `grep -c "^#### Screenshots" /tmp/mr-desc.md` == 1
   - `grep -c "^#### Tickets" /tmp/mr-desc.md` == 1
   - Under Tickets, `grep "^- .*https://trello.com" /tmp/mr-desc.md` shows the bullet with title + URL. If it still shows `##### ` or `#### Ticket` on its own line, rewrite to the new `#### Tickets` bullet format.
+
+## Step 3b — Offer screenshot capture from connected device (optional, via `screenshot` skill)
+
+After drafting the description but **before** `glab mr create`, offer to include a screenshot from the current connected device. This is optional — do not block MR creation if the user declines or no device is available.
+
+1. **Detect devices (same as `screenshot` skill):**
+
+   ```sh
+   adb devices -l
+   idevice_id -l
+   xcrun simctl list devices booted
+   ```
+
+   Treat only Android rows with state `device` as available, each UDID from `idevice_id -l` as a physical iOS device, and only booted rows from `simctl` as simulators. If a command is unavailable, treat that source as empty.
+
+2. **Offer to capture — always ask, never auto-capture without confirmation:**
+
+   - If no usable device is detected, keep `#### Screenshots` as `<!-- Add screenshots manually -->` and continue to Step 4.
+   - If devices are detected, ask: "Detected device(s): <list with platform/model/ID>. Do you want to capture a screenshot from the connected device to include in the MR? [y/N] — if multiple devices, tell me which one." Wait for user confirmation.
+   - If the user declines or does not respond, keep the placeholder and continue.
+
+3. **Capture using the `screenshot` skill (when user confirms):**
+
+   Follow `skills/screenshot/SKILL.md` exactly — including the host-approval batching rule from Command execution guidance (request one escalation for the whole GitLab+screenshot sequence):
+
+   - Android (explicit serial):
+     ```sh
+     mkdir -p ~/Desktop/screenshots && adb -s <ANDROID_SERIAL> exec-out screencap -p > ~/Desktop/screenshots/screenshot_$(date +%Y%m%d_%H%M%S).png && echo "Captured."
+     ```
+   - Physical iOS:
+     ```sh
+     mkdir -p ~/Desktop/screenshots && idevicescreenshot -u <IOS_UDID> ~/Desktop/screenshots/screenshot_$(date +%Y%m%d_%H%M%S).png && echo "Captured."
+     ```
+   - iOS simulator:
+     ```sh
+     mkdir -p ~/Desktop/screenshots && xcrun simctl io <SIMULATOR_UDID> screenshot ~/Desktop/screenshots/screenshot_$(date +%Y%m%d_%H%M%S).png && echo "Captured."
+     ```
+
+   Verify with `ls -t ~/Desktop/screenshots/*.png` and load the new file(s) via the Read tool so the image appears in the conversation. If capture fails, keep the placeholder, report the error, and continue to Step 4 — do not fail the MR.
+
+4. **Embed into `#### Screenshots` in `/tmp/mr-desc.md` with device-aware width:**
+
+   - Replace the placeholder `<!-- Add screenshots manually -->` with image(s) for the captured file(s). Keep the `#### Screenshots` heading.
+   - Determine width from the captured device + image orientation:
+     - **Phone** (any Android device, iPhone, or any non-iPad device) → `width="300"`
+     - **iPad portrait** (device name/model contains `iPad` and image height > width) → `width="500"`
+     - **iPad landscape** (device name/model contains `iPad` and image width > height) → `width="600"`
+     - Detect orientation from the screenshot file itself (do not guess from device name alone):
+
+       ```sh
+       file=$(ls -t ~/Desktop/screenshots/*.png | head -1)
+       # macOS sips (primary), fallback to identify/file if sips missing
+       w=$(sips -g pixelWidth "$file" 2>/dev/null | awk '/pixelWidth/{print $NF}'); h=$(sips -g pixelHeight "$file" 2>/dev/null | awk '/pixelHeight/{print $NF}')
+       if [ -z "$w" ] || [ -z "$h" ]; then
+         # fallback: try ImageMagick identify if installed
+         dims=$(identify -format "%w %h" "$file" 2>/dev/null || echo "")
+         w=$(echo $dims | awk '{print $1}'); h=$(echo $dims | awk '{print $2}')
+       fi
+       echo "screenshot $file ${w}x${h}"
+       ```
+
+     - Derive `is_ipad` from the selected device label used in Step 3b.2 (contains `iPad` case-insensitive). Example: `echo "$selected_device" | grep -qi ipad && is_ipad=true || is_ipad=false`.
+     - Then:
+       ```sh
+       if [ "$is_ipad" = true ]; then
+         if [ "$w" -gt "$h" ] 2>/dev/null; then width=600; else width=500; fi
+       else
+         width=300
+       fi
+       echo "chosen width $width"
+       ```
+
+   - Preferred — upload to GitLab to get a hosted URL (so the MR renders the image). Batch this with the MR create verification in one host-approved command:
+
+     ```sh
+     # after capture, upload (use project id from glab)
+     pid=$(glab api project --jq .id 2>/dev/null || echo ":id")
+     file=$(ls -t ~/Desktop/screenshots/*.png | head -1)
+     upload_json=$(glab api "projects/$pid/uploads" --field file=@"$file" 2>&1) || upload_json=""
+     url=$(echo "$upload_json" | jq -r '.url // empty')
+     # if url is relative (/uploads/...), prepend host: e.g. https://gitlab.com
+     if echo "$url" | grep -q "^/uploads"; then
+       host=$(git remote get-url origin | sed -E 's#.*@(.*):.*#https://\1#; s#https://[^/]+#\0#; s#\.git$##' 2>/dev/null)
+       [ -z "$host" ] && host="https://gitlab.com"
+       # try to derive full host from glab api project if available
+       full_url="${host}${url}"
+     else
+       full_url="$url"
+     fi
+     ```
+
+     If `full_url`/`url` is returned (e.g. `/uploads/.../screenshot.png` or `https://...`), write HTML with width so GitLab renders at the right size:
+
+     ```html
+     <img src="<full_url>" width="<width>" alt="Screenshot">
+     ```
+
+     Example outputs:
+     - Phone: `<img src="https://gitlab.com/.../screenshot.png" width="300" alt="Screenshot">`
+     - iPad portrait: `<img src="https://gitlab.com/.../screenshot.png" width="500" alt="Screenshot">`
+     - iPad landscape: `<img src="https://gitlab.com/.../screenshot.png" width="600" alt="Screenshot">`
+
+     If upload fails or is unsupported, write the same `<img>` tag with the local file path and a TODO note, and note in the report that the file needs manual upload:
+
+     ```html
+     <img src="~/Desktop/screenshots/<file>" width="<width>" alt="Screenshot"> <!-- TODO: upload this file to GitLab via the MR's image attach UI -->
+     ```
+
+   - For multiple screenshots, repeat the width detection per file and add one `<img ...>` line per image (each with its own width based on its orientation/device).
+   - Re-save `/tmp/mr-desc.md` and re-run the `grep -c "^#### Screenshots"` self-check before Step 4.
+
+5. **Do not request a separate host approval for the screenshot capture** — bundle `adb`/`idevicescreenshot`/`simctl` + `ls` + optional `glab api .../uploads` with the subsequent `glab mr create`/`view` sequence in one escalation when possible.
 
 ## Step 4 — Create the MR with glab (always Draft + assignee + remove source branch) — idempotent, verified
 
@@ -304,7 +417,7 @@ If a Notion page is connected to this epic (e.g. from `/init-epic` which created
 ## Step 6 — Report back
 
 - Print the MR title, target branch, and MR URL.
-- Confirm the description contains `#### Summary` / `#### Changes` / `#### Testing` / `#### Screenshots` / `#### Tickets` in order, concise and short, and that under `#### Tickets` it has a single bullet `- <Trello Title> <Trello URL>` (title + URL on one line, sourced from Notion). Note that `#### Screenshots` is manually filled — confirm placeholder is present if empty. If this was a fix for a previous merged MR, confirm the old MR reference appears in `#### Summary`.
+- Confirm the description contains `#### Summary` / `#### Changes` / `#### Testing` / `#### Screenshots` / `#### Tickets` in order, concise and short, and that under `#### Tickets` it has a single bullet `- <Trello Title> <Trello URL>` (title + URL on one line, sourced from Notion). For `#### Screenshots`, confirm either the captured screenshot markdown `![Screenshot](...)` (from Step 3b via `screenshot` skill, with uploaded GitLab URL or local path fallback) or the placeholder `<!-- Add screenshots manually -->` if no capture was done/available. If this was a fix for a previous merged MR, confirm the old MR reference appears in `#### Summary`.
 - Confirm the MR is `Draft` (verified from final JSON `draft`/`work_in_progress`), `Assignee: @me` (verified `assignee.username`), and `Delete source branch when MR is accepted: enabled` (verified `should_remove_source_branch` or `force_remove_source_branch=true` → report as `enabled (forced by project settings)`). Include the final JSON snippet in the report if relevant. If any flag failed, explain why and show the JSON.
 - If a Notion page was connected, confirm you appended `- MR Title MR URL` to its `Merge Requests` list (or created the list); otherwise note that no Notion update was performed.
 - Tell the user how to mark ready when done: `glab mr update <id> --ready`.
