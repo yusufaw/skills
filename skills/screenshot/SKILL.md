@@ -48,20 +48,19 @@ Determine the requested capture count from the wording: “twice” means 2,
 given, capture once. Use a 5-second gap between captures in a multi-capture
 request. Do not wait after the final capture.
 
-### Device selection — always confirm when multiple devices
+### Device selection
 
 - If exactly one usable device is detected, capture it immediately without
-  asking.
-- If multiple usable devices are detected, ALWAYS ask the user to confirm
-  before capturing. Present a numbered list of all detected devices (with
-  platform, model/name, and ID/serial) and wait for the user's selection.
-  Do not auto-capture even if the user's wording names a platform/model —
-  still confirm. Only after the user confirms, capture from the selected
-  device.
-- If the user named a specific target (e.g. “screenshot Android”, “screenshot
-  Nokia”, “screenshot iPad”) and that target matches exactly one detected
-  device among many, pre-select it in the confirmation list and ask the user
-  to confirm it before capturing.
+  asking, regardless of whether the user named a target.
+- If multiple usable devices are detected:
+  - If the user explicitly named a single target (e.g. "screenshot Android",
+    "screenshot Nokia", "screenshot iPad", or a specific device name/serial/UDID)
+    and that target matches exactly one detected device, capture that device
+    immediately without confirmation — no need to ask.
+  - Otherwise, ask the user to confirm before capturing. Present a numbered
+    list of all detected devices (with platform, model/name, and ID/serial)
+    and wait for the user's selection. Only after the user confirms, capture
+    from the selected device.
 - If the requested target is not detected, report that target as unavailable
   and show the detected devices. If the request matches more than one device,
   ask the user to clarify and wait for confirmation.
