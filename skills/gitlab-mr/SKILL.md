@@ -241,35 +241,27 @@ After drafting the description but **before** `glab mr create`, offer to include
        echo "chosen width $width"
        ```
 
-   - Preferred — upload to GitLab to get a hosted URL (so the MR renders the image). Batch this with the MR create verification in one host-approved command:
+    - Preferred — upload to GitLab to get a hosted URL (so the MR renders the image). Batch this with the MR create verification in one host-approved command:
 
-     ```sh
-     # after capture, upload (use project id from glab)
-     pid=$(glab api project --jq .id 2>/dev/null || echo ":id")
-     file=$(ls -t ~/Desktop/screenshots/*.png | head -1)
-     upload_json=$(glab api "projects/$pid/uploads" --field file=@"$file" 2>&1) || upload_json=""
-     url=$(echo "$upload_json" | jq -r '.url // empty')
-     # if url is relative (/uploads/...), prepend host: e.g. https://gitlab.com
-     if echo "$url" | grep -q "^/uploads"; then
-       host=$(git remote get-url origin | sed -E 's#.*@(.*):.*#https://\1#; s#https://[^/]+#\0#; s#\.git$##' 2>/dev/null)
-       [ -z "$host" ] && host="https://gitlab.com"
-       # try to derive full host from glab api project if available
-       full_url="${host}${url}"
-     else
-       full_url="$url"
-     fi
-     ```
+      ```sh
+      # after capture, upload (use project id from glab)
+      pid=$(glab api project --jq .id 2>/dev/null || echo ":id")
+      file=$(ls -t ~/Desktop/screenshots/*.png | head -1)
+      upload_json=$(glab api "projects/$pid/uploads" --field file=@"$file" 2>&1) || upload_json=""
+      url=$(echo "$upload_json" | jq -r '.url // empty')
+      # url is typically relative (/uploads/.../screenshot.png) — keep it as-is, do NOT prepend host
+      ```
 
-     If `full_url`/`url` is returned (e.g. `/uploads/.../screenshot.png` or `https://...`), write HTML with width so GitLab renders at the right size:
+      If `url` is returned (e.g. `/uploads/.../screenshot.png`), write HTML with width so GitLab renders at the right size. Keep the relative path — do NOT expand to `https://...`:
 
-     ```html
-     <img src="<full_url>" width="<width>" alt="Screenshot">
-     ```
+      ```html
+      <img src="<url>" width="<width>" alt="Screenshot">
+      ```
 
-     Example outputs:
-     - Phone: `<img src="https://gitlab.com/.../screenshot.png" width="300" alt="Screenshot">`
-     - iPad portrait: `<img src="https://gitlab.com/.../screenshot.png" width="500" alt="Screenshot">`
-     - iPad landscape: `<img src="https://gitlab.com/.../screenshot.png" width="600" alt="Screenshot">`
+      Example outputs:
+      - Phone: `<img src="/uploads/0ccbd3f7a9e69dc2fc566d2add89350a/screenshot_20260922_143659.png" width="300" alt="Screenshot">`
+      - iPad portrait: `<img src="/uploads/0ccbd3f7a9e69dc2fc566d2add89350a/screenshot_20260922_143659.png" width="500" alt="Screenshot">`
+      - iPad landscape: `<img src="/uploads/0ccbd3f7a9e69dc2fc566d2add89350a/screenshot_20260922_143659.png" width="600" alt="Screenshot">`
 
      If upload fails or is unsupported, write the same `<img>` tag with the local file path and a TODO note, and note in the report that the file needs manual upload:
 
