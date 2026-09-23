@@ -31,6 +31,8 @@ You create a GitLab Merge Request using `glab` with a meaningful title and a des
 - **Batch related GitLab commands into one host-approved command whenever possible.** Combine fetch → conditional update → re-verify into a single `bash` block chained with `&&` / `;` so the workflow needs only one approval. Example: `glab mr view ... --output json && glab api ... --method PUT ... && glab mr view ... --output json`.
 - Do not request repeated approval for routine commands in the same workflow unless the command scope materially changes (different project, different auth, destructive action). Reuse the initial approval for retries and verification steps.
 - If a command fails, **inspect the error and adjust the command instead of repeating the same operation.** Parse `stderr`, check for missing flags, auth, or already-exists cases, then retry with a corrected command (e.g. fall back from `--assignee "@me"` to `--assignee me`, or from `should_remove_source_branch` to `remove_source_branch`).
+- Do not assume this `glab` version supports `--jq` on `glab api`. Parse JSON with a separate `jq` command instead: `project_id=$(glab api "projects/:fullpath" | jq -r '.id')`.
+- For GitLab file uploads, use multipart form data: `glab api --method POST "projects/$project_id/uploads" --form "file=@$file"`. Do not use `--field` for binary uploads, because it sends JSON and the upload endpoint returns HTTP 400.
 
 ## Pre-flight checks
 
@@ -245,9 +247,9 @@ After drafting the description but **before** `glab mr create`, offer to include
 
       ```sh
       # after capture, upload (use project id from glab)
-      pid=$(glab api project --jq .id 2>/dev/null || echo ":id")
+      pid=$(glab api "projects/:fullpath" | jq -r '.id')
       file=$(ls -t ~/Desktop/screenshots/*.png | head -1)
-      upload_json=$(glab api "projects/$pid/uploads" --field file=@"$file" 2>&1) || upload_json=""
+      upload_json=$(glab api --method POST "projects/$pid/uploads" --form "file=@$file" 2>&1) || upload_json=""
       url=$(echo "$upload_json" | jq -r '.url // empty')
       # url is typically relative (/uploads/.../screenshot.png) — keep it as-is, do NOT prepend host
       ```
@@ -277,7 +279,7 @@ After drafting the description but **before** `glab mr create`, offer to include
 ## Step 4 — Create the MR with glab (always Draft + assignee + remove source branch) — idempotent, verified
 
 1. Ensure the branch is pushed (see Pre-flight step 6).
-2. Resolve assignee: use the authenticated GitLab user by default. This maps to `--assignee @me` in `glab`. Optionally verify the username via `glab api user --jq .username` or from `glab auth status`. If `glab` cannot resolve `@me`, fall back to no assignee and warn the user rather than failing the MR create. If the user explicitly says "no assignee" or "unassign", skip this flag.
+2. Resolve assignee: use the authenticated GitLab user by default. This maps to `--assignee @me` in `glab`. Optionally verify the username via `glab api user | jq -r '.username'` or from `glab auth status`. If `glab` cannot resolve `@me`, fall back to no assignee and warn the user rather than failing the MR create. If the user explicitly says "no assignee" or "unassign", skip this flag.
 3. Create the MR **as draft**, **assigned to you**, and with **delete source branch on merge**. Prefer the file-based description to avoid escaping issues:
 
    ```bash
@@ -321,7 +323,7 @@ After drafting the description but **before** `glab mr create`, offer to include
 
    ```bash
    # Fetch existing MR JSON first — do not touch settings blindly
-   glab mr view <iid> --output json > /tmp/mr.json 2>&1 || glab api "projects/:id/merge_requests/:iid" --jq . > /tmp/mr.json
+   glab mr view <iid> --output json > /tmp/mr.json 2>&1 || glab api "projects/:fullpath/merge_requests/<iid>" > /tmp/mr.json
    cat /tmp/mr.json | jq '{iid, draft: (.draft // .work_in_progress), assignee: .assignee.username, should_remove_source_branch, force_remove_source_branch, remove_source_branch, description}'
    # Update description + draft/assignee in one call (API preferred for remove_source_branch — see step 5)
    glab mr update <iid> --description-file /tmp/mr-desc.md --draft --assignee "@me" --yes
@@ -333,7 +335,7 @@ After drafting the description but **before** `glab mr create`, offer to include
 
    ```bash
    # Fetch current state (prefer one call, reuse project IID from previous step)
-   glab mr view <iid> --output json > /tmp/mr.json 2>&1 || glab api "projects/$(glab api project --jq .id)/merge_requests/<iid>" > /tmp/mr.json
+   glab mr view <iid> --output json > /tmp/mr.json 2>&1 || glab api "projects/:fullpath/merge_requests/<iid>" > /tmp/mr.json
    cat /tmp/mr.json | jq '{draft: (.draft // .work_in_progress // .draft), assignee: (.assignee.username // .assignee.name), should_remove_source_branch, force_remove_source_branch, remove_source_branch, description}'
    ```
 
@@ -343,8 +345,8 @@ After drafting the description but **before** `glab mr create`, offer to include
 
      ```bash
      # Only if verification shows removal is disabled (both flags false/null)
-     glab api "projects/:id/merge_requests/:iid" --method PUT -f remove_source_branch=true > /tmp/mr-update.json \
-       || glab api "projects/:id/merge_requests/:iid" --method PUT -f should_remove_source_branch=true > /tmp/mr-update.json
+       glab api "projects/:fullpath/merge_requests/<iid>" --method PUT -f remove_source_branch=true > /tmp/mr-update.json \
+       || glab api "projects/:fullpath/merge_requests/<iid>" --method PUT -f should_remove_source_branch=true > /tmp/mr-update.json
      # Fallback only if API is unavailable — and only after confirming disabled:
      # glab mr update <iid> --remove-source-branch
      ```
@@ -360,7 +362,7 @@ After drafting the description but **before** `glab mr create`, offer to include
    **Batched verification/update sequence (one host approval):**
 
    ```bash
-   iid=<iid>; pid=$(glab api project --jq .id 2>/dev/null || echo ":id"); \
+   iid=<iid>; pid=$(glab api "projects/:fullpath" | jq -r '.id'); \
    glab mr view $iid --output json > /tmp/mr.json 2>&1 || glab api "projects/$pid/merge_requests/$iid" > /tmp/mr.json; \
    echo "=== current ==="; cat /tmp/mr.json | jq '{draft: (.draft // .work_in_progress), assignee: .assignee.username, should_remove_source_branch, force_remove_source_branch, description: (.description[0:120])}'; \
    should=$(jq -r '.should_remove_source_branch // .remove_source_branch // false' /tmp/mr.json); \
@@ -429,7 +431,7 @@ If a Notion page is connected to this epic (e.g. from `/init-epic` which created
 If the user just wants the shell command after you draft the description:
 
 ```bash
-cat > /tmp/mr-desc.md <<'EOF'
+   cat > /tmp/mr-desc.md <<'EOF'
 #### Summary
 
 <1-2 sentences, concise>
@@ -453,5 +455,5 @@ cat > /tmp/mr-desc.md <<'EOF'
 EOF
 glab mr create --title "<title>" --description-file /tmp/mr-desc.md --target-branch development --draft --assignee "@me" --remove-source-branch --yes
 # then verify (one batched host approval):
-iid=<iid>; pid=$(glab api project --jq .id); glab mr view $iid --output json | jq '{draft: (.draft // .work_in_progress), assignee: .assignee.username, should_remove_source_branch, force_remove_source_branch}'; if [ "$(jq -r '.should_remove_source_branch // false' /tmp/mr.json)" != "true" ] && [ "$(jq -r '.force_remove_source_branch // false' /tmp/mr.json)" != "true" ]; then glab api "projects/$pid/merge_requests/$iid" --method PUT -f remove_source_branch=true; fi; glab mr view $iid --output json | jq '{draft, assignee, should_remove_source_branch, force_remove_source_branch, description}'
+iid=<iid>; pid=$(glab api "projects/:fullpath" | jq -r '.id'); glab mr view $iid --output json | jq '{draft: (.draft // .work_in_progress), assignee: .assignee.username, should_remove_source_branch, force_remove_source_branch}'; if [ "$(jq -r '.should_remove_source_branch // false' /tmp/mr.json)" != "true" ] && [ "$(jq -r '.force_remove_source_branch // false' /tmp/mr.json)" != "true" ]; then glab api "projects/$pid/merge_requests/$iid" --method PUT -f remove_source_branch=true; fi; glab mr view $iid --output json | jq '{draft, assignee, should_remove_source_branch, force_remove_source_branch, description}'
 ```
