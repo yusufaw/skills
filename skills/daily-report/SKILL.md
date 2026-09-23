@@ -1,6 +1,6 @@
 ---
 name: daily-report
-description: Generate a daily report from conversation context and sync to Notion Daily Report page linked to the requirement page. Use when the user asks for daily report, standup, what I did today, or types /daily-report.
+description: Generate a daily report from committed code changes and sync to Notion Daily Report page linked to the requirement page. Use when the user asks for daily report, standup, what I did today, or types /daily-report.
 disable-model-invocation: true
 allowed-tools: Bash(git log *) Bash(git status *) Bash(git diff *) Bash(date *) Bash(git branch *)
 ---
@@ -27,38 +27,52 @@ allowed-tools: Bash(git log *) Bash(git status *) Bash(git diff *) Bash(date *) 
 
 # daily-report — Generate Daily Report and sync to Notion
 
-You automatically review what the user has done so far in the conversation context, display it, and put it into the Notion Daily Report page linked to the current requirement Notion page.
+You automatically review committed code changes for the target date, display it, and put it into the Notion Daily Report page linked to the current requirement Notion page.
 
 ## Target dates
 
 1. Default is **today** (local date from `date` / system). Use `date "+%B %-d, %Y"` format for the heading (e.g. `September 3, 2026`). If the user does not mention any date, generate for today immediately — no confirmation needed.
 2. If the user asks for a specific date or range (e.g. `/daily-report 2026-09-02`, `/daily-report yesterday`, `/daily-report 2026-09-01 to 2026-09-03`), parse those dates and generate one section per date in descending order (newest first). For each requested date, filter evidence to that day (`git log --since="YYYY-MM-DD 00:00" --until="YYYY-MM-DD 23:59"`).
 
-## Step 1 — Review what was done (conversation-first)
+## Step 1 — Review what was done (committed code only)
 
-Primary source is the **conversation**: what the user asked for, what you built/edited, decisions made, and what was completed.
+**Primary source is committed code** — `git log --since/--until` for the target date and `git diff <commit> --stat` / commit messages. Only work that produced a committed code change counts.
 
-Supporting evidence (do not treat as sole truth — conversation wins when they differ):
-- `git log` above for commits touching each date (including `git log --since/--until` for specific dates).
-- `git status --short` and `git diff HEAD --stat` for uncommitted work that counts for today.
+Conversation context and `git status`/`git diff HEAD` are **supporting evidence only** to map commits to Notion Context and to understand what changed. Do NOT create bullets for activities that have no corresponding committed code change.
+
+Supporting evidence:
+- `git log` above for commits touching each date (including `git log --since/--until` for specific dates). Inspect `git log --stat` / `git show --stat` if the summary is unclear.
 - Any Notion requirement page(s) linked in this session (from `/init-epic` or user-provided URLs) — extract `Trello Title` and `Trello URL` from each page's properties (same extraction as `skills/gitlab-mr/SKILL.md` Step 1: MCP search, Notion API, or ask user). Each Context group pairs with its Notion page title and Trello URL. If a task maps to multiple Notion pages, group under the primary one.
+
+**What counts:**
+- Any committed change to codebase files (feat/fix/refactor/update/remove/migrate/implement) — including app code, scripts, and config that ships with the codebase.
+
+**What does NOT count (never create a bullet for these):**
+- Process / non-code activities without a code diff: `verify`, `test`, `QA`, `manual check`, `push branch`, `open MR`, `create MR`, `rebase`, `merge main into branch`, `resolve conflicts`, `review`, `deploy`.
+- If the only evidence for an activity is the conversation mentioning verification/testing/pushing but no commit backs it, drop it entirely. Do not rewrite it as `Verify ...`.
 
 **Grouping by Context (required):**
 - Group all work by Notion page / Trello card. Each distinct requirement = one `Context: <Notion Page Title>` group.
-- Under each Context, list 1-5 bullets for the concrete work done for that requirement that day.
+- Under each Context, list 1-5 bullets for the **committed code changes** for that requirement that day.
 - Order Context groups by most significant / most commits first, or chronologically if equal.
 - For each date, target 1-4 Context groups and 2-9 total bullets.
 
-**Bullet format per line:**
+**Bullet format — one-line, self-contained (required):**
 - `Context: <Notion Page Title>` — exactly this prefix, then the Notion page title. In chat, append the Trello URL after title if you want traceability, but title alone is sufficient. In Notion, annotate the title segment with `link: {url: "<Notion Page URL>"}` when available.
-- `- <short doing summary> <Trello URL>` — summary under 15 words, imperative style (`Fix`, `Add`, `Verify`, `Apply`), then single space, then raw Trello URL `https://trello.com/c/...`. If no Trello URL is known, use summary alone and warn internally. Do not hallucinate Trello URLs.
+- `- <self-contained code-change summary> <Trello URL>` — exactly one line per committed change:
+  - Start with a code-change verb: `Add`, `Fix`, `Update`, `Refactor`, `Remove`, `Migrate`, `Implement` (never `Verify`, `Test`, `Push`, `Create MR`, `Check`).
+  - Must be understandable **without opening the Notion page**. Include WHAT changed + WHERE (module/feature/file) in the same line. Do NOT rely on the `Context:` title to carry meaning — repeat the feature/module name in the bullet if needed.
+  - Under 20 words, imperative style, concrete and specific (bad: `Fix width`; good: `Fix iPad attachment button width in Site Diary to prevent overflow on small screens`).
+  - Then single space, then raw Trello URL `https://trello.com/c/...`. If no Trello URL is known, use summary alone and warn internally. Do not hallucinate Trello URLs.
+  - One commit may map to one bullet; squash trivial fixup commits (`fix typo`, `wip`, `lint`) into the meaningful bullet they support — do not list them separately.
 
 **Noise filtering — EXCLUDE these from the report (do not create bullets for them):**
 - Tooling/infra noise: `hot reload`, `flutter hot reload`, `hot restart`, `flutter run`, `pod install`, `npm install`, dev server restarts.
-- Process noise: `open MR`, `create MR`, `push branch`, `rebase`, `merge main into branch`, `resolve conflicts` — unless the MR itself is the deliverable the user cares about (then summarize as `Verify ...` or `Open follow-up MR` under the relevant Context, not as a standalone bullet).
-- Pure formatting/lint commits with no functional change (`format`, `lint fix`, `prettier`) — fold into the related Context bullet if needed, don't list separately.
-- WIP / checkpoint commits (`wip`, `tmp`, `fix typo` without context) — consolidate into a meaningful summary for the Context.
-- When in doubt, drop the noise. Prefer fewer, meaningful bullets over exhaustive commit-by-commit listing.
+- All process bullets: `Verify ...`, `Test ...`, `QA ...`, `Push branch`, `Open MR`, `Create MR`, `Rebase`, `Merge main` — even when they appear under a relevant Context in examples elsewhere, they must be omitted here.
+- Pure formatting/lint commits with no functional change (`format`, `lint fix`, `prettier`) — fold into the related code-change bullet if needed, don't list separately.
+- WIP / checkpoint commits (`wip`, `tmp`, `fix typo` without context) — consolidate into the meaningful code-change summary for the Context.
+- Uncommitted / unstaged changes with no commit — do not report unless the user explicitly asks to include staged work; default is committed code only.
+- When in doubt, drop the noise. Prefer fewer, meaningful code-change bullets over exhaustive commit-by-commit listing.
 
 If there is nothing meaningful to report for a date after filtering, state `No activity recorded` under that date instead of leaving it empty.
 
@@ -69,31 +83,29 @@ Render the report in the chat using the exact format below so the user can revie
 ```
 September 3, 2026
 Context: Split Button for Upload Attachments is Missing in Multiple Modules
-- Fix iPad attachment button width across Site Diary screens https://trello.com/c/p47rWwhV
-- Apply shared iPad sizing across attachment modules https://trello.com/c/p47rWwhV
-- Verify iPad attachment flows and open follow-up MR https://trello.com/c/p47rWwhV
+- Fix iPad attachment button width in Site Diary to prevent overflow on small screens https://trello.com/c/p47rWwhV
+- Update shared attachment component sizing for iPad across all modules https://trello.com/c/p47rWwhV
 Context: Add "Print" Button to Generated PDF Viewers Across Core Modules
-- Fix Permit PDF landscape relayout from the print dialog https://trello.com/c/ODV5SCi2
-- Paginate large custom-field tables in landscape https://trello.com/c/ODV5SCi2
-- Add landscape PDF regression coverage https://trello.com/c/ODV5SCi2
-- Verify Permit landscape printing on Nokia without PDF fallback https://trello.com/c/ODV5SCi2
+- Fix Permit PDF landscape relayout triggered from print dialog https://trello.com/c/ODV5SCi2
+- Paginate large custom-field tables in Permit PDF landscape export https://trello.com/c/ODV5SCi2
+- Add landscape PDF regression coverage for Permit custom-field tables https://trello.com/c/ODV5SCi2
 Context: Add Delay Register to Mobile App (Site Diary)
-- Fix singular/plural wording for delay hours https://trello.com/c/7Ib0vf0v
-- Show Delay Register count in section titles https://trello.com/c/7Ib0vf0v
-- Reduce the top gap above the Add Delay button https://trello.com/c/7Ib0vf0v
+- Update Delay Register hours label to handle singular/plural correctly https://trello.com/c/7Ib0vf0v
+- Add Delay Register count to Site Diary section header https://trello.com/c/7Ib0vf0v
+- Fix top spacing above Add Delay button in Site Diary https://trello.com/c/7Ib0vf0v
 
 ---
 
 September 2, 2026
 Context: Site diary and pdf via mobile - allow user to PDF
 - Add Delay Register section to exported Site Diary PDFs https://trello.com/c/3Yu1Rmfp
-- Align Activities by Trade values in exported Site Diary PDFs https://trello.com/c/3Yu1Rmfp
-- Verify Site Diary PDF output on iPad and Nokia https://trello.com/c/3Yu1Rmfp
+- Fix Activities-by-Trade alignment in exported Site Diary PDFs https://trello.com/c/3Yu1Rmfp
 ```
 
 - Newest date first, `---` between dates (no trailing `---` after last date).
 - Keep `Context: ` lines exactly as `Context: ` + Notion title (no dash prefix, no bullet).
 - Keep task lines exactly as `- ` + summary + ` ` + Trello URL.
+- Every `- ` line must be a committed code change, self-contained in one line, and must not start with Verify/Test/Push/MR.
 
 Ask for confirmation before writing to Notion: "Push this to the Notion Daily Report page?" unless the user already said to sync.
 
@@ -126,7 +138,7 @@ You need:
 2. **For each target date in the report:**
    - Locate `Heading 1` or `Heading 2` with the exact date string (e.g. `September 3, 2026`). If it exists, append/update content under it. If not, create it:
      - Create `heading_2` block with `rich_text: [{text: {content: "September 3, 2026"}}]`.
-     - Then append **a single `paragraph` block** containing the entire list for that date — use literal `Context: ` / `- ` prefixes, NOT `bulleted_list_item` blocks, NOT multiple paragraphs, NOT standalone Markdown list lines. Build the paragraph's `rich_text` so each line is either `Context: <Notion Title>` or `- <summary> <Trello URL>` joined by `<br>` inside one paragraph. Example paragraph content for one date: `Context: Split Button for Upload Attachments is Missing in Multiple Modules<br>- Fix iPad attachment button width across Site Diary screens https://trello.com/c/p47rWwhV<br>- Apply shared iPad sizing across attachment modules https://trello.com/c/p47rWwhV<br>Context: Add "Print" Button to Generated PDF Viewers Across Core Modules<br>- Fix Permit PDF landscape relayout from the print dialog https://trello.com/c/ODV5SCi2<br>- Paginate large custom-field tables in landscape https://trello.com/c/ODV5SCi2`. When inserting via Markdown, use the same `<br>` joining: `Context: [Split Button...](<Notion URL>)<br>- Fix iPad attachment button width ... https://trello.com/c/p47rWwhV<br>- Apply shared ...`. For clickable links via API: annotate only the Notion title segment in `Context: ` lines with `link: {url: "<Notion Page URL>"}` and only the URL segment in bullet lines with `link: {url: "<Trello URL>"}`; keep prefixes (`Context: `, `- `) and summaries as plain text.
+     - Then append **a single `paragraph` block** containing the entire list for that date — use literal `Context: ` / `- ` prefixes, NOT `bulleted_list_item` blocks, NOT multiple paragraphs, NOT standalone Markdown list lines. Build the paragraph's `rich_text` so each line is either `Context: <Notion Title>` or `- <summary> <Trello URL>` joined by `<br>` inside one paragraph. Example paragraph content for one date: `Context: Split Button for Upload Attachments is Missing in Multiple Modules<br>- Fix iPad attachment button width in Site Diary to prevent overflow on small screens https://trello.com/c/p47rWwhV<br>- Update shared attachment component sizing for iPad across all modules https://trello.com/c/p47rWwhV<br>Context: Add "Print" Button to Generated PDF Viewers Across Core Modules<br>- Fix Permit PDF landscape relayout triggered from print dialog https://trello.com/c/ODV5SCi2<br>- Paginate large custom-field tables in Permit PDF landscape export https://trello.com/c/ODV5SCi2`. When inserting via Markdown, use the same `<br>` joining: `Context: [Split Button...](<Notion URL>)<br>- Fix iPad attachment button width ... https://trello.com/c/p47rWwhV<br>- Apply shared ...`. For clickable links via API: annotate only the Notion title segment in `Context: ` lines with `link: {url: "<Notion Page URL>"}` and only the URL segment in bullet lines with `link: {url: "<Trello URL>"}`; keep prefixes (`Context: `, `- `) and summaries as plain text.
      - Do NOT use `bulleted_list_item` or `numbered_list_item` blocks anywhere for daily reports. Do NOT split Context groups into separate paragraphs — keep exactly one paragraph per date.
      - Order: newest date section at the top of the page. Achieve this by `append` for new dates then note to user that manual reorder may be needed if the API only appends — or use `mcp__notion__append_block_children` with `after` positioning if supported; otherwise append at bottom and warn "New date added at bottom — move to top if your page is newest-first."
    - If a date heading already exists, locate its single list `paragraph` immediately after the heading. **Append only new lines that are not duplicates** (match by Trello URL or summary, and for Context lines by Notion title) by updating that paragraph block via `mcp__notion__update_block` to extend its `rich_text` with `<br>Context: <new title>` or `<br>- <new summary> <URL>` inside the same paragraph. Do not create `bulleted_list_item` blocks or additional paragraphs for the same date — keep exactly one list paragraph per date; if no list paragraph exists yet, create one. Do not overwrite existing lines. When adding a new Context group to an existing date, append the `Context: ` line followed by its bullets in order.
