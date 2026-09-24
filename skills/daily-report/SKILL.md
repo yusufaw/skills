@@ -58,7 +58,7 @@ Supporting evidence:
 - For each date, target 1-4 Context groups and 2-9 total bullets.
 
 **Bullet format — one-line, self-contained (required):**
-- `Context: <Notion Page Title>` — exactly this prefix, then the Notion page title. In chat, append the Trello URL after title if you want traceability, but title alone is sufficient. In Notion, annotate the title segment with `link: {url: "<Notion Page URL>"}` when available.
+- `Context: <Notion Page Title>` — exactly this prefix, then the Notion page title. In chat, append the Trello URL after title if you want traceability, but title alone is sufficient. In Notion, render the requirement page as a **page mention** (`{type: "mention", mention: {type: "page", page: {id: "<PAGE_ID>"}}}`) — NOT a hyperlink (`link: {url}`). Extract `<PAGE_ID>` from the Notion URL (last 32 hex chars, format as `8-4-4-4-12` with dashes, e.g. `abc12345-...`).
 - `- <self-contained code-change summary> <Trello URL>` — exactly one line per committed change:
   - Start with a code-change verb: `Add`, `Fix`, `Update`, `Refactor`, `Remove`, `Migrate`, `Implement` (never `Verify`, `Test`, `Push`, `Create MR`, `Check`).
   - Must be understandable **without opening the Notion page**. Include WHAT changed + WHERE (module/feature/file) in the same line. Do NOT rely on the `Context:` title to carry meaning — repeat the feature/module name in the bullet if needed.
@@ -124,31 +124,30 @@ You need:
 
 > **Critical Notion formatting rule — must be followed for every write:**
 > Daily report entries must use **exactly**:
-> 1. One date heading block (`heading_2`).
-> 2. One paragraph block immediately after it.
-> 3. The paragraph must contain **all** `Context:` and `- ` lines.
+> 1. One date paragraph block containing a **date mention** (`@` date, NOT a heading).
+> 2. One paragraph block immediately after it containing **all** `Context:` and `- ` lines.
+> 3. One `divider` block after the list paragraph to separate days.
 >
 > Never insert the report using Markdown where each `- ` starts on a new raw newline, because Notion converts those lines into `bulleted_list_item` blocks.
-> When using Markdown content insertion, keep the report as **one paragraph** by joining lines with `<br>`:
-> `Context: [Requirement](URL)<br>- First task https://trello.com/c/...<br>- Second task https://trello.com/c/...`
-> Do not use `bulleted_list_item`, `numbered_list_item`, or standalone Markdown list lines anywhere for daily reports.
+> When using Markdown content insertion, keep the report as **one paragraph** by joining lines with `<br>` — but for Notion API blocks, use block types below.
+> Do not use `bulleted_list_item`, `numbered_list_item`, or `heading_1`/`heading_2`/`heading_3` blocks anywhere for daily reports.
 
-1. **Read the Daily Report page blocks** via `mcp__notion__get_block_children` / `mcp__notion__list_blocks` to see existing date headings and avoid duplicating a date.
+1. **Read the Daily Report page blocks** via `mcp__notion__get_block_children` / `mcp__notion__list_blocks` to see existing date mentions and avoid duplicating a date.
 
-2. **For each target date in the report:**
-   - Locate `Heading 1` or `Heading 2` with the exact date string (e.g. `September 3, 2026`). If it exists, append/update content under it. If not, create it:
-     - Create `heading_2` block with `rich_text: [{text: {content: "September 3, 2026"}}]`.
-     - Then append **a single `paragraph` block** containing the entire list for that date — use literal `Context: ` / `- ` prefixes, NOT `bulleted_list_item` blocks, NOT multiple paragraphs, NOT standalone Markdown list lines. Build the paragraph's `rich_text` so each line is either `Context: <Notion Title>` or `- <summary> <Trello URL>` joined by `<br>` inside one paragraph. Example paragraph content for one date: `Context: Split Button for Upload Attachments is Missing in Multiple Modules<br>- Fix iPad attachment button width in Site Diary to prevent overflow on small screens https://trello.com/c/p47rWwhV<br>- Update shared attachment component sizing for iPad across all modules https://trello.com/c/p47rWwhV<br>Context: Add "Print" Button to Generated PDF Viewers Across Core Modules<br>- Fix Permit PDF landscape relayout triggered from print dialog https://trello.com/c/ODV5SCi2<br>- Paginate large custom-field tables in Permit PDF landscape export https://trello.com/c/ODV5SCi2`. When inserting via Markdown, use the same `<br>` joining: `Context: [Split Button...](<Notion URL>)<br>- Fix iPad attachment button width ... https://trello.com/c/p47rWwhV<br>- Apply shared ...`. For clickable links via API: annotate only the Notion title segment in `Context: ` lines with `link: {url: "<Notion Page URL>"}` and only the URL segment in bullet lines with `link: {url: "<Trello URL>"}`; keep prefixes (`Context: `, `- `) and summaries as plain text.
-     - Do NOT use `bulleted_list_item` or `numbered_list_item` blocks anywhere for daily reports. Do NOT split Context groups into separate paragraphs — keep exactly one paragraph per date.
+2. **For each target date in the report (newest first):**
+   - Locate an existing date paragraph that contains a `mention` with `mention.type == "date"` and `mention.date.start == "YYYY-MM-DD"` for that date (e.g. `2026-09-03`). If it exists, append/update content under it. If not, create it:
+     - Create a **date paragraph** block with a date mention: `paragraph` block with `rich_text: [{type: "mention", mention: {type: "date", date: {start: "YYYY-MM-DD"}}}]` (e.g. `2026-09-03` renders as `@September 3, 2026` / `@2026-09-03` in Notion). Do NOT create `heading_2` or any heading block for the date — use the `@` date mention format.
+     - Then append **a single `paragraph` block** containing the entire list for that date — use literal `Context: ` / `- ` prefixes, NOT `bulleted_list_item` blocks, NOT multiple paragraphs, NOT standalone Markdown list lines. Build the paragraph's `rich_text` so each line is either `Context: <Notion Page Mention>` or `- <summary> <Trello URL>` joined by line breaks inside one paragraph. For the `Context: ` line: `rich_text` must be `[{type: "text", text: {content: "Context: "}}, {type: "mention", mention: {type: "page", page: {id: "<PAGE_ID>"}}}]` where `<PAGE_ID>` is extracted from the Notion URL (32 hex chars, format `8-4-4-4-12`). Do NOT use `link: {url}` for requirement pages. For bullet lines: keep `- ` prefix and summary as plain text, annotate only the Trello URL segment with `link: {url: "<Trello URL>"}` if desired. Example paragraph rich_text lines joined by newline/`\n` (rendered as `<br>` in Markdown insertion): `Context: ` + page mention, then `- Fix iPad attachment button width in Site Diary to prevent overflow on small screens` + Trello link, etc.
+     - Then append a **`divider` block** (`{type: "divider", divider: {}}`) immediately after the list paragraph to separate this date from the next. Always add the divider — one divider per date section.
+     - Do NOT use `bulleted_list_item`, `numbered_list_item`, or `heading_*` blocks anywhere for daily reports. Do NOT split Context groups into separate paragraphs — keep exactly one list paragraph per date plus one divider.
      - Order: newest date section at the top of the page. Achieve this by `append` for new dates then note to user that manual reorder may be needed if the API only appends — or use `mcp__notion__append_block_children` with `after` positioning if supported; otherwise append at bottom and warn "New date added at bottom — move to top if your page is newest-first."
-   - If a date heading already exists, locate its single list `paragraph` immediately after the heading. **Append only new lines that are not duplicates** (match by Trello URL or summary, and for Context lines by Notion title) by updating that paragraph block via `mcp__notion__update_block` to extend its `rich_text` with `<br>Context: <new title>` or `<br>- <new summary> <URL>` inside the same paragraph. Do not create `bulleted_list_item` blocks or additional paragraphs for the same date — keep exactly one list paragraph per date; if no list paragraph exists yet, create one. Do not overwrite existing lines. When adding a new Context group to an existing date, append the `Context: ` line followed by its bullets in order.
-   - For the `---` between dates in chat, do NOT create a `divider` block in Notion unless the page already uses dividers between date sections — if it does, insert `divider` between headings for consistency; otherwise headings alone are sufficient.
+   - If a date mention paragraph already exists, locate its single list `paragraph` immediately after it (before the divider). **Append only new lines that are not duplicates** (match by Trello URL or summary, and for Context lines by page ID/title) by updating that paragraph block via `mcp__notion__update_block` to extend its `rich_text` with newline + `Context: ` + page mention or newline + `- <new summary> <URL>` inside the same paragraph. Do not create `bulleted_list_item` blocks or additional paragraphs for the same date — keep exactly one list paragraph per date; if no list paragraph exists yet, create one. Do not overwrite existing lines. When adding a new Context group to an existing date, append the `Context: ` line (with page mention) followed by its bullets in order. Ensure the `divider` block still follows the list paragraph (re-add if missing).
 
 3. **Verify (required after every write):** Re-fetch the Daily Report page blocks via `mcp__notion__get_block_children` and confirm for each target date:
-   - The date heading is followed by **exactly one `paragraph` block** containing all `Context:` and `- ` lines joined by `<br>` (rendered as line breaks inside the single paragraph).
-   - There are **zero `bulleted_list_item` / `numbered_list_item` blocks** inside that date section (between this heading and the next heading).
-   - The Notion page link(s) appear in the Context lines.
-   If any `bulleted_list_item` / `numbered_list_item` blocks are detected in the date section, **immediately replace the date section**: delete the stray bullet/numbered blocks and update/recreate the single paragraph using `<br>` separators so the entire report lives inside one paragraph, then **re-fetch and verify again** until the section contains one paragraph and no bulleted-list blocks. Share the Daily Report page URL in the report only after verification passes.
+   - The date is a **paragraph block containing a date mention** (`mention.type == "date"` with correct `start`), followed by **exactly one `paragraph` block** containing all `Context:` and `- ` lines (with page mentions), followed by **exactly one `divider` block**.
+   - There are **zero `bulleted_list_item` / `numbered_list_item` / `heading_*` blocks** inside that date section (between this date mention and the next date mention).
+   - The requirement pages appear as **page mentions** (`mention.type == "page"`) in the Context lines, NOT as hyperlinks.
+   If any `bulleted_list_item` / `numbered_list_item` / `heading_*` blocks are detected in the date section, or if the date is a heading instead of a date mention, or if Context lines use hyperlinks instead of page mentions, or if the divider is missing, **immediately replace/fix the date section**: delete stray blocks, recreate the date paragraph with date mention, update/recreate the single list paragraph using page mentions and line breaks, and ensure a divider follows it, then **re-fetch and verify again** until the section matches the required structure. Share the Daily Report page URL only after verification passes.
 
 ## Step 5 — Report back
 
@@ -159,7 +158,7 @@ You need:
 
 ## Error handling
 
-- No meaningful activity after filtering for the date → report `No activity recorded` for that date, still create heading in Notion if requested (or skip if user says not to).
+- No meaningful activity after filtering for the date → report `No activity recorded` for that date, still create date mention + paragraph + divider in Notion if requested (or skip if user says not to).
 - Notion MCP not connected / auth fails → keep chat report, instruct to connect/share pages, do not fabricate.
 - Requirement page not found → generate report with Context title as plain text (no link) and note it.
 - Trello URL missing → bullet without URL, warn "No Trello URL found for <summary> — add from Notion."
