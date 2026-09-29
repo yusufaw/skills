@@ -73,18 +73,18 @@ Generate the MR title from the actual changes, not just the branch name.
 - Inspect `git log --oneline <base>..HEAD` and `git diff --stat <base>...HEAD` (already shown above) plus `git diff <base>...HEAD --stat` details if needed.
 - Title rules:
   - Imperative / concise, under 72 chars, no trailing period.
+  - Start with a clear, meaningful action verb (e.g. `Add`, `Fix`, `Update`, `Refine`, `Remove`, `Prevent`) — do NOT use Conventional Commits prefixes like `feat:`, `fix:`, `chore:`, `feat(scope):` etc. Titles must never contain a `type:` prefix.
   - **If the MR contains multiple distinct change contexts, pick only the single biggest/most impactful change for the title — do NOT use `,` to join them.** Move secondary contexts to the description (`#### Summary`/`#### Changes`). Example: an MR that both scales the calendar and adds landscape scroll should not combine them — title uses the primary one only.
   - **Use ` and ` only when the same logical change affects multiple modules/screens** (similar change, parallel scope). In that narrow case ` and ` is allowed. Examples where ` and ` is OK: `Fix header and footer alignment on mobile` (same fix, multiple areas), `Update login and profile screens for dark mode` (same adaptation, multiple screens). If the two parts are distinct features/fixes, do not use ` and ` — pick one.
   - Never use ` & `, ` plus `, or ` with ` to join distinct changes; `&` follows the same rule as ` and ` (only for similar parallel scope).
-  - Prefer Conventional Commits style where it helps (`feat:`, `fix:`, `chore:`), but follow the repo's existing MR title style if you can infer it from `glab mr list` or `git log --merges`.
-  - Include Trello card code if the Trello Title contains one (e.g. `[PROJ-123] Add retry for payment webhook`), otherwise just the functional summary.
+  - Include Trello card code if the Trello Title contains one (e.g. `[PROJ-123] Prevent double charge on checkout retry`), otherwise just the functional summary.
   - Do not include raw branch name unless it adds clarity. Do not include `WIP` unless the MR is explicitly a draft.
   - If Trello Title is very descriptive, you may reuse it verbatim as the MR title — but if it lists multiple distinct contexts with ` and ` or `,`, reduce it to the biggest one; keep ` and ` only if it matches the similar-change-across-screens rule. Mention that you sourced it from Notion.
-  - Before running `glab mr create`, self-check the title: if it contains `,` joining two features, or ` and ` joining distinct features, rewrite to the single biggest change.
+  - Before running `glab mr create`, self-check the title: if it contains `,` joining two features, ` and ` joining distinct features, or a Conventional Commits prefix (`feat:`, `fix:`, `chore:` etc.), rewrite to the single biggest change with an action verb and no prefix.
 
 Examples:
-- `fix: prevent double charge on checkout retry [CH-42]`
-- `feat(payment): add webhook retry with exponential backoff`
+- `Prevent double charge on checkout retry [CH-42]`
+- `Add webhook retry with exponential backoff for payments`
 - Distinct contexts — Bad: `Scale Site Diary calendar for iPad and add landscape month scroll` → Good: `Scale Site Diary calendar for iPad` (mention landscape month scroll in `#### Changes`)
 - Distinct contexts — Bad: `Fix login, add logout` / `Fix login and add logout` → Good: `Fix login flow` (mention logout in description)
 - Similar change across screens — OK: `Fix header and footer alignment on mobile`
