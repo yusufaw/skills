@@ -37,7 +37,7 @@ You MUST use Notion MCP — do not mock or hallucinate the content.
 2. If the page is a database entry, also fetch its properties: title, description, status, and any rich-text fields that contain the initiative description.
 3. If the first call returns only metadata, follow with a block-children fetch (e.g. `mcp__notion__get_block_children` / `mcp__notion__list_blocks`) to get the full body text.
 4. If MCP is unavailable or returns an error (auth, permissions, page not found), tell the user exactly what failed, suggest checking Notion connection / sharing the page with the integration, and stop — do not proceed without the real content.
-5. Consolidate the content into a short in-memory summary: keep original headings, bullet points, and acceptance criteria verbatim where possible; note any linked Figma, Trello, or docs referenced inside.
+5. Consolidate the content into a short in-memory summary: keep original headings, bullet points, and acceptance criteria verbatim where possible; note any linked Figma, Trello, or docs referenced inside. Do NOT browse/open Trello links — they are private and inaccessible; just record the Trello URL as a reference link (e.g. in the summary/plan as `Trello: <url>`) without fetching its content. Apply the same rule to any link you cannot access: note it as a reference, never block on it.
 
 ## Step 2 — Assess the description and feasibility
 
