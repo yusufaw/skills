@@ -276,7 +276,7 @@ After drafting the description but **before** `glab mr create`, offer to include
 
 5. **Do not request a separate host approval for the screenshot capture** — bundle `adb`/`idevicescreenshot`/`simctl` + `ls` + optional `glab api .../uploads` with the subsequent `glab mr create`/`view` sequence in one escalation when possible.
 
-## Step 4 — Create the MR with glab (always Draft + assignee + remove source branch) — idempotent, verified
+## Step 4 — Create the MR with glab (always Draft + assignee + remove source branch) — idempotent, verified; never update a merged MR (create a new one instead)
 
 1. Ensure the branch is pushed (see Pre-flight step 6).
 2. Resolve assignee: use the authenticated GitLab user by default. This maps to `--assignee @me` in `glab`. Optionally verify the username via `glab api user | jq -r '.username'` or from `glab auth status`. If `glab` cannot resolve `@me`, fall back to no assignee and warn the user rather than failing the MR create. If the user explicitly says "no assignee" or "unassign", skip this flag.
@@ -319,15 +319,30 @@ After drafting the description but **before** `glab mr create`, offer to include
    - `--milestone "Sprint 12"`
    - `--squash-before-merge` if the repo prefers it
 
-4. If `glab mr create` reports "a merge request already exists for this branch", do **not** create a duplicate. Fetch the existing MR and update it in place. **Batch the fetch + conditional update + re-verify into one host-approved command** (see Command execution guidance above).
+4. **Always check whether an MR for this branch already exists — and whether it is merged — before creating or updating anything.** Do this check on every run, not only when `glab mr create` errors:
 
    ```bash
-   # Fetch existing MR JSON first — do not touch settings blindly
-   glab mr view <iid> --output json > /tmp/mr.json 2>&1 || glab api "projects/:fullpath/merge_requests/<iid>" > /tmp/mr.json
-   cat /tmp/mr.json | jq '{iid, draft: (.draft // .work_in_progress), assignee: .assignee.username, should_remove_source_branch, force_remove_source_branch, remove_source_branch, description}'
-   # Update description + draft/assignee in one call (API preferred for remove_source_branch — see step 5)
-   glab mr update <iid> --description-file /tmp/mr-desc.md --draft --assignee "@me" --yes
+   glab mr list --source-branch "$(git branch --show-current)" --state all --output json > /tmp/mr-existing.json 2>&1
+   jq '[.[] | {iid, state, merged_at, web_url}]' /tmp/mr-existing.json
    ```
+
+   Branch on `state` / `merged_at`:
+
+   - **Existing MR is `merged` (or `merged_at` is set) → do NOT update it.** A merged MR must never receive `glab mr update` / PUT edits — GitLab rejects them and the old MR is history. Instead **create a NEW MR** using the exact `glab mr create` command from step 3 (title from Step 2, description from Step 3), and treat it as a fresh MR for verification, Notion append, and reporting. In `#### Summary`, reference the previous merged MR URL as the follow-up (`Follow-up to <old MR URL> — ...`).
+     - If `glab mr create` refuses because the branch has no new commits since the merge, tell the user the branch is fully merged and ask them to push new commits (or reopen the old MR) — do not force anything.
+   - **Existing MR is `opened` → do not create a duplicate.** Fetch the existing MR and update it in place. **Batch the fetch + conditional update + re-verify into one host-approved command** (see Command execution guidance above).
+
+     ```bash
+     # Fetch existing MR JSON first — do not touch settings blindly
+     glab mr view <iid> --output json > /tmp/mr.json 2>&1 || glab api "projects/:fullpath/merge_requests/<iid>" > /tmp/mr.json
+     cat /tmp/mr.json | jq '{iid, state, draft: (.draft // .work_in_progress), assignee: .assignee.username, should_remove_source_branch, force_remove_source_branch, remove_source_branch, description}'
+     # Re-check state from the fetched JSON: if merged, stop updating and go to the "merged → new MR" path above
+     [ "$(jq -r '.state // empty' /tmp/mr.json)" = "merged" ] && echo "MR already merged — create a new MR instead" && exit 0
+     # Update description + draft/assignee in one call (API preferred for remove_source_branch — see step 5)
+     glab mr update <iid> --description-file /tmp/mr-desc.md --draft --assignee "@me" --yes
+     ```
+
+   - **Existing MR is `closed` (not merged) → create a new MR** (same as the merged case, minus the follow-up reference).
 
 5. **Post-create / post-update verification — fetch JSON state before changing settings (required, idempotent):**
 
@@ -336,9 +351,10 @@ After drafting the description but **before** `glab mr create`, offer to include
    ```bash
    # Fetch current state (prefer one call, reuse project IID from previous step)
    glab mr view <iid> --output json > /tmp/mr.json 2>&1 || glab api "projects/:fullpath/merge_requests/<iid>" > /tmp/mr.json
-   cat /tmp/mr.json | jq '{draft: (.draft // .work_in_progress // .draft), assignee: (.assignee.username // .assignee.name), should_remove_source_branch, force_remove_source_branch, remove_source_branch, description}'
+   cat /tmp/mr.json | jq '{state, draft: (.draft // .work_in_progress // .draft), assignee: (.assignee.username // .assignee.name), should_remove_source_branch, force_remove_source_branch, remove_source_branch, description}'
    ```
 
+   - **Check `state` first — a merged MR is read-only.** If `state == "merged"` (or `merged_at` is set), skip every update/toggle here and create a NEW MR per Step 4.4 instead. Never run `glab mr update` or a PUT against a merged MR.
    - **Treat `--remove-source-branch` in `glab` as a toggle, not an idempotent setter.** Never invoke `glab mr update --remove-source-branch` unless the fetched JSON confirms source-branch removal is **disabled**. If `should_remove_source_branch` is already `true` or `force_remove_source_branch` is `true`, do nothing — the setting is already enabled.
    - **Never invoke the toggle twice blindly.** One conditional invocation per verification cycle at most; re-fetch JSON after any toggle before deciding again.
    - **Prefer the GitLab API field `remove_source_branch=true` when explicitly setting the value** (explicit setter, not a toggle). Use it when the state check shows removal is disabled:
@@ -364,14 +380,17 @@ After drafting the description but **before** `glab mr create`, offer to include
    ```bash
    iid=<iid>; pid=$(glab api "projects/:fullpath" | jq -r '.id'); \
    glab mr view $iid --output json > /tmp/mr.json 2>&1 || glab api "projects/$pid/merge_requests/$iid" > /tmp/mr.json; \
-   echo "=== current ==="; cat /tmp/mr.json | jq '{draft: (.draft // .work_in_progress), assignee: .assignee.username, should_remove_source_branch, force_remove_source_branch, description: (.description[0:120])}'; \
+   echo "=== current ==="; cat /tmp/mr.json | jq '{state, draft: (.draft // .work_in_progress), assignee: .assignee.username, should_remove_source_branch, force_remove_source_branch, description: (.description[0:120])}'; \
+   if [ "$(jq -r '.state // empty' /tmp/mr.json)" = "merged" ]; then echo "MR is already merged — no updates allowed, create a new MR instead"; \
+   else \
    should=$(jq -r '.should_remove_source_branch // .remove_source_branch // false' /tmp/mr.json); \
    forced=$(jq -r '.force_remove_source_branch // false' /tmp/mr.json); \
    if [ "$forced" = "true" ]; then echo "remove_source_branch forced=true — already enabled"; \
    elif [ "$should" != "true" ]; then echo "enabling remove_source_branch via API"; glab api "projects/$pid/merge_requests/$iid" --method PUT -f remove_source_branch=true > /tmp/mr-update.json 2>&1 || glab api "projects/$pid/merge_requests/$iid" --method PUT -f should_remove_source_branch=true > /tmp/mr-update.json 2>&1; cat /tmp/mr-update.json | jq '{should_remove_source_branch, force_remove_source_branch}'; \
    else echo "remove_source_branch already enabled — no toggle needed"; fi; \
+   fi; \
    glab mr view $iid --output json > /tmp/mr-final.json 2>&1 || glab api "projects/$pid/merge_requests/$iid" > /tmp/mr-final.json; \
-   echo "=== final ==="; cat /tmp/mr-final.json | jq '{draft: (.draft // .work_in_progress), assignee: .assignee.username, should_remove_source_branch, force_remove_source_branch}'
+   echo "=== final ==="; cat /tmp/mr-final.json | jq '{state, draft: (.draft // .work_in_progress), assignee: .assignee.username, should_remove_source_branch, force_remove_source_branch}'
    ```
 
    On success, capture the MR URL (e.g. `https://gitlab.com/group/project/-/merge_requests/123`) and include the final verified JSON summary in the report. If any field does not match expectation, inspect the error output and adjust the command (do not blindly repeat the same toggle or update).
@@ -425,6 +444,7 @@ If a Notion page is connected to this epic (e.g. from `/init-epic` which created
 - Notion lookup fails → fall back to asking the user (Step 1, option 3), never fabricate.
 - MR create fails due to validation (e.g. title too long, branch not pushed) → show the exact `glab` stderr and suggest the fix.
 - MR update / API fails → inspect the error output, adjust the field name (`remove_source_branch` vs `should_remove_source_branch`) or auth, then retry with a corrected command; do not repeat the identical failing command.
+- API returns 405/400 "Cannot modify merged MR" (or similar) → the MR is already merged; stop updating it and create a new MR per Step 4.4.
 
 ## Quick reference — one-liner for manual use
 
@@ -453,7 +473,8 @@ If the user just wants the shell command after you draft the description:
 
 - <Trello Title from Notion> https://trello.com/c/...
 EOF
+glab mr list --source-branch "$(git branch --show-current)" --state all --output json | jq '[.[] | {iid, state, merged_at}]'   # merged → make a NEW MR; opened → update that one
 glab mr create --title "<title>" --description-file /tmp/mr-desc.md --target-branch development --draft --assignee "@me" --remove-source-branch --yes
 # then verify (one batched host approval):
-iid=<iid>; pid=$(glab api "projects/:fullpath" | jq -r '.id'); glab mr view $iid --output json | jq '{draft: (.draft // .work_in_progress), assignee: .assignee.username, should_remove_source_branch, force_remove_source_branch}'; if [ "$(jq -r '.should_remove_source_branch // false' /tmp/mr.json)" != "true" ] && [ "$(jq -r '.force_remove_source_branch // false' /tmp/mr.json)" != "true" ]; then glab api "projects/$pid/merge_requests/$iid" --method PUT -f remove_source_branch=true; fi; glab mr view $iid --output json | jq '{draft, assignee, should_remove_source_branch, force_remove_source_branch, description}'
+iid=<iid>; pid=$(glab api "projects/:fullpath" | jq -r '.id'); glab mr view $iid --output json > /tmp/mr.json; jq '{state, draft: (.draft // .work_in_progress), assignee: .assignee.username, should_remove_source_branch, force_remove_source_branch}' /tmp/mr.json; if [ "$(jq -r '.state // empty' /tmp/mr.json)" != "merged" ] && [ "$(jq -r '.should_remove_source_branch // false' /tmp/mr.json)" != "true" ] && [ "$(jq -r '.force_remove_source_branch // false' /tmp/mr.json)" != "true" ]; then glab api "projects/$pid/merge_requests/$iid" --method PUT -f remove_source_branch=true; fi; glab mr view $iid --output json | jq '{state, draft, assignee, should_remove_source_branch, force_remove_source_branch, description}'
 ```
