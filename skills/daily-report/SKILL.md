@@ -65,6 +65,7 @@ Supporting evidence:
   - Under 20 words, imperative style, concrete and specific (bad: `Fix width`; good: `Fix iPad attachment button width in Site Diary to prevent overflow on small screens`).
   - Then single space, then raw Trello URL `https://trello.com/c/...`. If no Trello URL is known, use summary alone and warn internally. Do not hallucinate Trello URLs.
   - One commit may map to one bullet; squash trivial fixup commits (`fix typo`, `wip`, `lint`) into the meaningful bullet they support — do not list them separately.
+  - **Combine bullets with the same action and same Trello URL.** When several bullets share the same action but differ only in the target list (modules, screens, entities), merge them into one bullet that enumerates the targets, e.g. `Show nested unit and room counts in Quality Observation, Safety Observation, and Project Meeting details <URL>`. Use a serial comma and `and` before the last item. Only combine when the action and Trello URL are identical; keep bullets separate if the action differs.
 
 **Noise filtering — EXCLUDE these from the report (do not create bullets for them):**
 - Tooling/infra noise: `hot reload`, `flutter hot reload`, `hot restart`, `flutter run`, `pod install`, `npm install`, dev server restarts.
