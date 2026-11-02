@@ -34,6 +34,8 @@ You automatically review committed code changes for the target date, display it,
 1. Default is **today** (local date from `date` / system). Use `date "+%B %-d, %Y"` format for the heading (e.g. `September 3, 2026`). If the user does not mention any date, generate for today immediately — no confirmation needed.
 2. If the user asks for a specific date or range (e.g. `/daily-report 2026-09-02`, `/daily-report yesterday`, `/daily-report 2026-09-01 to 2026-09-03`), parse those dates and generate one section per date in descending order (newest first). For each requested date, filter evidence to that day (`git log --since="YYYY-MM-DD 00:00" --until="YYYY-MM-DD 23:59"`).
 
+**Ordering rule (always):** newest date on top, older days below. In both chat and Notion, the most recent date is the first section and each older day follows after it, down to the oldest at the bottom. Never place an older day above a newer one.
+
 ## Step 1 — Review what was done (committed code only)
 
 **Primary source is committed code** — `git log --since/--until` for the target date and `git diff <commit> --stat` / commit messages. Only work that produced a committed code change counts.
@@ -103,7 +105,7 @@ Context: Site diary and pdf via mobile - allow user to PDF
 - Fix Activities-by-Trade alignment in exported Site Diary PDFs https://trello.com/c/3Yu1Rmfp
 ```
 
-- Newest date first, `---` between dates (no trailing `---` after last date).
+- Newest date first (recent on top, older days toward the bottom), `---` between dates (no trailing `---` after last date).
 - Keep `Context: ` lines exactly as `Context: ` + Notion title (no dash prefix, no bullet).
 - Keep task lines exactly as `- ` + summary + ` ` + Trello URL.
 - Every `- ` line must be a committed code change, self-contained in one line, and must not start with Verify/Test/Push/MR.
@@ -141,13 +143,14 @@ You need:
      - Then append **a single `paragraph` block** containing the entire list for that date — use literal `Context: ` / `- ` prefixes, NOT `bulleted_list_item` blocks, NOT multiple paragraphs, NOT standalone Markdown list lines. Build the paragraph's `rich_text` so each line is either `Context: <Notion Page Mention>` or `- <summary> <Trello URL>` joined by line breaks inside one paragraph. For the `Context: ` line: `rich_text` must be `[{type: "text", text: {content: "Context: "}}, {type: "mention", mention: {type: "page", page: {id: "<PAGE_ID>"}}}]` where `<PAGE_ID>` is extracted from the Notion URL (32 hex chars, format `8-4-4-4-12`). Do NOT use `link: {url}` for requirement pages. For bullet lines: keep `- ` prefix and summary as plain text, annotate only the Trello URL segment with `link: {url: "<Trello URL>"}` if desired. Example paragraph rich_text lines joined by newline/`\n` (rendered as `<br>` in Markdown insertion): `Context: ` + page mention, then `- Fix iPad attachment button width in Site Diary to prevent overflow on small screens` + Trello link, etc.
      - Then append a **`divider` block** (`{type: "divider", divider: {}}`) immediately after the list paragraph to separate this date from the next. Always add the divider — one divider per date section.
      - Do NOT use `bulleted_list_item`, `numbered_list_item`, or `heading_*` blocks anywhere for daily reports. Do NOT split Context groups into separate paragraphs — keep exactly one list paragraph per date plus one divider.
-     - Order: newest date section at the top of the page. Achieve this by `append` for new dates then note to user that manual reorder may be needed if the API only appends — or use `mcp__notion__append_block_children` with `after` positioning if supported; otherwise append at bottom and warn "New date added at bottom — move to top if your page is newest-first."
+     - Order (always): newest date section at the top of the page, oldest at the bottom. Achieve this by `append` for new dates then note to user that manual reorder may be needed if the API only appends — or use `mcp__notion__append_block_children` with `after` positioning if supported; otherwise append at bottom and warn "New date added at bottom — move to top if your page is newest-first." When a new (newer) date is added, it must end up above all existing older dates.
    - If a date mention paragraph already exists, locate its single list `paragraph` immediately after it (before the divider). **Append only new lines that are not duplicates** (match by Trello URL or summary, and for Context lines by page ID/title) by updating that paragraph block via `mcp__notion__update_block` to extend its `rich_text` with newline + `Context: ` + page mention or newline + `- <new summary> <URL>` inside the same paragraph. Do not create `bulleted_list_item` blocks or additional paragraphs for the same date — keep exactly one list paragraph per date; if no list paragraph exists yet, create one. Do not overwrite existing lines. When adding a new Context group to an existing date, append the `Context: ` line (with page mention) followed by its bullets in order. Ensure the `divider` block still follows the list paragraph (re-add if missing).
 
 3. **Verify (required after every write):** Re-fetch the Daily Report page blocks via `mcp__notion__get_block_children` and confirm for each target date:
    - The date is a **paragraph block containing a date mention** (`mention.type == "date"` with correct `start`), followed by **exactly one `paragraph` block** containing all `Context:` and `- ` lines (with page mentions), followed by **exactly one `divider` block**.
    - There are **zero `bulleted_list_item` / `numbered_list_item` / `heading_*` blocks** inside that date section (between this date mention and the next date mention).
    - The requirement pages appear as **page mentions** (`mention.type == "page"`) in the Context lines, NOT as hyperlinks.
+   - Date sections are ordered newest first: the most recent date mention is above every older one, down to the oldest at the bottom.
    If any `bulleted_list_item` / `numbered_list_item` / `heading_*` blocks are detected in the date section, or if the date is a heading instead of a date mention, or if Context lines use hyperlinks instead of page mentions, or if the divider is missing, **immediately replace/fix the date section**: delete stray blocks, recreate the date paragraph with date mention, update/recreate the single list paragraph using page mentions and line breaks, and ensure a divider follows it, then **re-fetch and verify again** until the section matches the required structure. Share the Daily Report page URL only after verification passes.
 
 ## Step 5 — Report back
