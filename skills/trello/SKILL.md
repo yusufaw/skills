@@ -9,13 +9,13 @@ allowed-tools: Bash(git branch *) Bash(git log *) Bash(git status *) Bash(git di
 
 !`git branch --show-current`
 
+## Remote branches
+
+!`git branch -r`
+
 ## Commits on this branch
 
-!`base=$(git merge-base HEAD origin/development 2>/dev/null || git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null); if [ -n "$base" ]; then git log --pretty=format:'- %s' "$base"..HEAD; else echo "(no upstream base found — falling back to last 5 commits)"; git log -n 5 --pretty=format:'- %s'; fi`
-
-## Files touched by those commits
-
-!`base=$(git merge-base HEAD origin/development 2>/dev/null || git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null); if [ -n "$base" ]; then git diff --stat "$base"...HEAD; fi`
+Pick the base branch: `origin/development` if listed above, else `origin/main`, else `origin/master`. Run `git merge-base HEAD <that branch>` to get `<base>`, then read `git log --pretty=format:'- %s' <base>..HEAD` and `git diff --stat <base>...HEAD`. If none of those branches exist, use `git log -n 5 --pretty=format:'- %s'` instead.
 
 ## Uncommitted work
 

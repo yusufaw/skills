@@ -11,15 +11,7 @@ description: Create a GitLab merge request with glab, auto-filling Trello Title 
 
 !`git remote -v | head -20`
 !`git status --short --branch`
-!`base=$(git merge-base HEAD origin/development 2>/dev/null || git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null); if [ -n "$base" ]; then echo "Base: $base"; git log --oneline "$base"..HEAD | head -20; else echo "(no base found)"; git log -n 10 --oneline | head -20; fi`
-
-## Changes in this MR
-
-!`base=$(git merge-base HEAD origin/development 2>/dev/null || git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null); if [ -n "$base" ]; then git diff --stat "$base"...HEAD | head -50; else git diff --stat HEAD | head -50; fi`
-
-## glab auth status
-
-!`glab auth status 2>&1 | head -20; echo "---"; glab --version 2>&1 | head -5`
+!`git branch -r`
 
 # GitLab MR — Create Merge Request with Trello from Notion via glab
 
@@ -70,7 +62,7 @@ Keep the raw values for the description template in Step 3.
 
 Generate the MR title from the actual changes, not just the branch name.
 
-- Inspect `git log --oneline <base>..HEAD` and `git diff --stat <base>...HEAD` (already shown above) plus `git diff <base>...HEAD --stat` details if needed.
+- Run `git merge-base HEAD origin/<target>` to get `<base>`, then inspect `git log --oneline <base>..HEAD` and `git diff --stat <base>...HEAD`, plus `git diff <base>...HEAD` details if needed.
 - Title rules:
   - Imperative / concise, under 72 chars, no trailing period.
   - Start with a clear, meaningful action verb (e.g. `Add`, `Fix`, `Update`, `Refine`, `Remove`, `Prevent`) — do NOT use Conventional Commits prefixes like `feat:`, `fix:`, `chore:`, `feat(scope):` etc. Titles must never contain a `type:` prefix.
